@@ -149,35 +149,44 @@ public final class AudioPipe
 	{
 		if(!enabled()) { return; }
 
+		final org.recompile.freej2me.session.AudioSink sink = getSink();
 		final AudioFormat format = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, 44100.0f, 16, 1, 2, 44100.0f, false);
 		new Thread(new Runnable()
 		{
 			@Override
 			public void run()
 			{
-				int effectiveDuration = Math.max(50, duration);
-				int totalSamples = (int)((format.getSampleRate() * effectiveDuration) / 1000.0);
-				int chunkSamples = 1024;
-				double freq = 440.0 * Math.pow(2.0, (double)(note - 69) / 12.0);
-				double phase = 0.0;
-				double step = Math.PI * 2 * freq / format.getSampleRate();
-				double amp = Math.max(0.0, Math.min(1.0, (double)volume / 100.0)) * 0.35;
-				byte[] buffer = new byte[chunkSamples * 2];
-
-				AudioPipe.setFormat(format);
-				for(int written = 0; written < totalSamples; )
+				if(sink != null) { AudioPipe.setThreadLocalSink(sink); }
+				try
 				{
-					int n = Math.min(chunkSamples, totalSamples - written);
-					for(int i = 0; i < n; i++)
+					int effectiveDuration = Math.max(50, duration);
+					int totalSamples = (int)((format.getSampleRate() * effectiveDuration) / 1000.0);
+					int chunkSamples = 1024;
+					double freq = 440.0 * Math.pow(2.0, (double)(note - 69) / 12.0);
+					double phase = 0.0;
+					double step = Math.PI * 2 * freq / format.getSampleRate();
+					double amp = Math.max(0.0, Math.min(1.0, (double)volume / 100.0)) * 0.35;
+					byte[] buffer = new byte[chunkSamples * 2];
+
+					AudioPipe.setFormat(format);
+					for(int written = 0; written < totalSamples; )
 					{
-						short sample = (short)((Math.sin(phase) >= 0.0 ? 1.0 : -1.0) * amp * 32767.0);
-						buffer[i * 2] = (byte)(sample & 0xFF);
-						buffer[i * 2 + 1] = (byte)((sample >>> 8) & 0xFF);
-						phase += step;
+						int n = Math.min(chunkSamples, totalSamples - written);
+						for(int i = 0; i < n; i++)
+						{
+							short sample = (short)((Math.sin(phase) >= 0.0 ? 1.0 : -1.0) * amp * 32767.0);
+							buffer[i * 2] = (byte)(sample & 0xFF);
+							buffer[i * 2 + 1] = (byte)((sample >>> 8) & 0xFF);
+							phase += step;
+						}
+						AudioPipe.writePcm(format, buffer, 0, n * 2);
+						AudioPipe.paceBytes(format, n * 2);
+						written += n;
 					}
-					AudioPipe.writePcm(format, buffer, 0, n * 2);
-					AudioPipe.paceBytes(format, n * 2);
-					written += n;
+				}
+				finally
+				{
+					if(sink != null) { AudioPipe.clearThreadLocalSink(); }
 				}
 			}
 		}, "FreeJ2ME-Tone-Pipe").start();

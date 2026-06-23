@@ -306,7 +306,8 @@ public class WebSocketSession implements Runnable
 			else
 			{
 				out.write(127);
-				for(int i = 7; i >= 0; i--) { out.write((data.length >> (i * 8)) & 0xFF); }
+				long len = data.length;
+				for(int i = 7; i >= 0; i--) { out.write((int)((len >> (i * 8)) & 0xFF)); }
 			}
 			out.write(data);
 			out.flush();
@@ -373,7 +374,8 @@ public class WebSocketSession implements Runnable
 				else
 				{
 					out.write(127);
-					for(int i = 7; i >= 0; i--) { out.write((data.length >> (i * 8)) & 0xFF); }
+					long len = data.length;
+					for(int i = 7; i >= 0; i--) { out.write((int)((len >> (i * 8)) & 0xFF)); }
 				}
 				out.write(data);
 				out.flush();

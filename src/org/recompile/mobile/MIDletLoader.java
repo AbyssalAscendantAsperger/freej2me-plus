@@ -131,7 +131,7 @@ public class MIDletLoader extends URLClassLoader
 
 	public MIDletLoader(URL url, Map<String, String> descriptorProperties)
 	{
-		super(new URL[] {url} );
+		super(new URL[] {url}, MIDletLoader.class.getClassLoader());
 
 		try 
 		{

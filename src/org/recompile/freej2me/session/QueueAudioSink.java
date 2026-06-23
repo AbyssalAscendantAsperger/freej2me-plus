@@ -11,7 +11,7 @@ import javax.sound.sampled.AudioFormat;
 */
 public final class QueueAudioSink implements AudioSink
 {
-	private final BlockingQueue<AudioPacket> queue = new LinkedBlockingQueue<AudioPacket>();
+	private final BlockingQueue<AudioPacket> queue = new LinkedBlockingQueue<AudioPacket>(128);
 	private volatile boolean closed = false;
 
 	@Override

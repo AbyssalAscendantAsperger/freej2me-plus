@@ -11,7 +11,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 */
 public final class QueueFrameSink implements FrameSink
 {
-	private final BlockingQueue<FramePacket> frames = new LinkedBlockingQueue<FramePacket>();
+	private final BlockingQueue<FramePacket> frames = new LinkedBlockingQueue<FramePacket>(5);
 	private volatile boolean ready = false;
 	private volatile boolean closed = false;
 

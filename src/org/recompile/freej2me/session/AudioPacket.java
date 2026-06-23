@@ -45,17 +45,16 @@ public final class AudioPacket
 			sr[1] = (byte)((sampleRate >>> 16) & 0xFF);
 			sr[2] = (byte)((sampleRate >>> 8) & 0xFF);
 			sr[3] = (byte)(sampleRate & 0xFF);
-			byte[] extra = new byte[5];
+			byte[] extra = new byte[4];
 			extra[0] = (byte)(format.getChannels() & 0xFF);
 			extra[1] = (byte)(format.getSampleSizeInBits() & 0xFF);
 			extra[2] = (byte)(AudioFormat.Encoding.PCM_SIGNED.equals(format.getEncoding()) ? 1 : 0);
 			extra[3] = (byte)(format.isBigEndian() ? 1 : 0);
-			extra[4] = 0; // reserved
-			byte[] r = new byte[4 + 1 + 4 + 5];
+			byte[] r = new byte[4 + 1 + 4 + 4];
 			System.arraycopy(magic, 0, r, 0, 4);
 			System.arraycopy(type, 0, r, 4, 1);
 			System.arraycopy(sr, 0, r, 5, 4);
-			System.arraycopy(extra, 0, r, 9, 5);
+			System.arraycopy(extra, 0, r, 9, 4);
 			return r;
 		}
 		else

@@ -12,7 +12,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public final class QueueInputSource implements InputSource
 {
 	private static final int EOF = -1;
-	private final BlockingQueue<Integer> queue = new LinkedBlockingQueue<Integer>();
+	private final BlockingQueue<Integer> queue = new LinkedBlockingQueue<Integer>(65536);
 	private volatile boolean closed = false;
 
 	public void push(byte[] data)
