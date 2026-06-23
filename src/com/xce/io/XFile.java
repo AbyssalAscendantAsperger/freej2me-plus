@@ -126,7 +126,7 @@ public class XFile
 
     static File convertFilePath(String path) 
     {
-        String basePath = Mobile.XCE_DATA_PATH + Mobile.getPlatform().loader.suitename;
+        String basePath = Mobile.getXceDataPath() + Mobile.getPlatform().loader.suitename;
         boolean ignored = new File(basePath).mkdirs();
         return new File(basePath, path);
     }

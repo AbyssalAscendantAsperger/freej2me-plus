@@ -50,7 +50,7 @@ public class Manager
 	public static final String MIDI_DEVICE_LOCATOR = "device://midi";
 
 	/* Custom MIDI variables */
-	private static File soundfontDir = new File("freej2me_system" + File.separatorChar + "customMIDI" + File.separatorChar);
+	private static File soundfontDir = new File(Mobile.getDataDir() + File.separatorChar + "customMIDI" + File.separatorChar);
 	private static Soundbank customSoundfont;
 	private static Soundbank defaultSoundbank = null;
 	
@@ -243,7 +243,7 @@ public class Manager
 
 			// And save the copy to the specified dir
 			OutputStream outStream;
-			String dumpPath = "." + File.separatorChar + "FreeJ2MEDumps" + File.separatorChar + "Audio" + File.separatorChar + Mobile.getPlatform().loader.suitename + File.separatorChar;
+			String dumpPath = Mobile.getDataDir() + File.separatorChar + "FreeJ2MEDumps" + File.separatorChar + "Audio" + File.separatorChar + Mobile.getPlatform().loader.suitename + File.separatorChar;
 			File dumpFile = new File(dumpPath);
 
 			if (!dumpFile.isDirectory()) { dumpFile.mkdirs(); }

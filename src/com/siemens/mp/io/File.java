@@ -185,11 +185,11 @@ public class File
         java.io.File file;
 		int colon = fileName.indexOf(':');
 
-		if (colon == -1) { file = new java.io.File(Mobile.SIEMENS_DATA_PATH, fileName); } 
+		if (colon == -1) { file = new java.io.File(Mobile.getSiemensDataPath(), fileName); } 
         else 
         {
 			fileName = fileName.substring(colon + 2);
-			file = new java.io.File(Mobile.SIEMENS_DATA_PATH, fileName);
+			file = new java.io.File(Mobile.getSiemensDataPath(), fileName);
 		}
 
         // Create siemens dir if not available yet

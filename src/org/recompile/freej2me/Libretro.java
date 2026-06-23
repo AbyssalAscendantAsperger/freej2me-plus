@@ -64,6 +64,7 @@ public class Libretro
 
 	private final InputSource input;
 	private final FrameSink frameSink;
+	private final org.recompile.freej2me.session.AudioSink audioSink;
 
 	public static void main(String args[])
 	{
@@ -73,15 +74,22 @@ public class Libretro
 
 	public Libretro(String args[])
 	{
-		this(args, new StreamInputSource(System.in), new StreamFrameSink(System.out));
+		this(args, new StreamInputSource(System.in), new StreamFrameSink(System.out), null);
 	}
 
 	public Libretro(String args[], InputSource input, FrameSink frameSink)
+	{
+		this(args, input, frameSink, null);
+	}
+
+	public Libretro(String args[], InputSource input, FrameSink frameSink, org.recompile.freej2me.session.AudioSink audioSink)
 	{
 		if(input == null) { throw new NullPointerException("InputSource cannot be null"); }
 		if(frameSink == null) { throw new NullPointerException("FrameSink cannot be null"); }
 		this.input = input;
 		this.frameSink = frameSink;
+		this.audioSink = audioSink;
+		if(audioSink != null) { AudioPipe.setThreadLocalSink(audioSink); }
 		lcdWidth  = Mobile.lcdWidth;
 		lcdHeight = Mobile.lcdHeight;
 

@@ -61,6 +61,15 @@ public class Mobile
 	// Default MIDP encoding, will be changed by DoJa and any other implementation that use a different encoding
 	public static String textEncoding = supportedEncodings[ISO_8859_1];
 
+	private static final ThreadLocal<String> dataDir = new ThreadLocal<String>();
+	public static void setDataDir(String dir) { dataDir.set(dir); }
+	public static String getDataDir()
+	{
+		String d = dataDir.get();
+		if(d != null) { return d; }
+		return "freej2me_system";
+	}
+
 	private static Display display;
 
 	// Used mostly for pause/resume requests
@@ -104,9 +113,9 @@ public class Mobile
 	public static boolean dumpGraphicsObjects = false;
 
 	// Enable/disable logging to the console and optionally to a file
-	private static final String LOG_FILE = "freej2me_system" + File.separatorChar + "FreeJ2ME.log";
-	public static final String SIEMENS_DATA_PATH = "freej2me_system" + File.separatorChar + "SiemensData" + File.separatorChar;
-	public static final String XCE_DATA_PATH = "freej2me_system" + File.separatorChar + "XceData" + File.separatorChar;
+	public static String getLogFilePath() { return getDataDir() + File.separatorChar + "FreeJ2ME.log"; }
+	public static String getSiemensDataPath() { return getDataDir() + File.separatorChar + "SiemensData" + File.separatorChar; }
+	public static String getXceDataPath() { return getDataDir() + File.separatorChar + "XceData" + File.separatorChar; }
 	public static byte minLogLevel = 2;
 
 	// Log Levels
@@ -118,7 +127,7 @@ public class Mobile
 	public static final byte LOG_FATAL   = 5;
 
 	// KDDI/KJX variables
-	public static final String tempKJXDir = "." + File.separatorChar + "FreeJ2MEDumps" + File.separatorChar + "KDDI" + File.separatorChar;
+	public static String getTempKJXDir() { return getDataDir() + File.separatorChar + "FreeJ2MEDumps" + File.separatorChar + "KDDI" + File.separatorChar; }
 	public static boolean deleteTemporaryKJXFiles = true;
 
 	//LCDUI colors
@@ -960,7 +969,7 @@ public class Mobile
 	/* Clears old log file at boot. */
 	public static final void clearOldLog() 
 	{
-		logFile = new File(LOG_FILE);
+		logFile = new File(getLogFilePath());
         if (logFile.exists()) { logFile.delete(); }
 		// Create system dir if not available yet and try writing to the log file
 		logFile.getParentFile().mkdirs();

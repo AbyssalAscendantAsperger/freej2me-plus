@@ -2,48 +2,106 @@ package org.recompile.freej2me.session;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Constructor;
+
 import org.recompile.freej2me.Libretro;
 
 /*
 	Embeddable libretro runtime wrapper.
 
-	IMPORTANT: this class is the I/O/session foundation only. The current FreeJ2ME
-	core still contains many static globals (Mobile, MobilePlatform, Display,
-	MIDletLoader, Manager, RMS, ...). For true multi-session inside one JVM, create
-	each LibretroEmbeddedSession through an isolated child-first ClassLoader, or
-	continue refactoring those globals into a real per-session context.
+	v0.6 changes:
+	- Added AudioSink support (QueueAudioSink) so audio is routed per-session.
+	- Added ClassLoader-based isolation: when a custom ClassLoader is provided,
+	  Libretro is instantiated via reflection so that Mobile/MobilePlatform/Display
+	  static globals are duplicated per session.
+	- Added ThreadGroup so session threads can be bulk-interrupted on stop().
+	- Added per-session data directory (dataDir) for log/RMS/temp isolation.
+	- Added lifecycle cleanup (input/frame/audio sinks, thread interrupt, queue drain).
 */
 public final class LibretroEmbeddedSession
 {
 	private final String sessionId;
-	private final QueueInputSource input;
-	private final QueueFrameSink frames;
+	private QueueInputSource input;
+	private QueueFrameSink frames;
+	private QueueAudioSink audio;
+	private String dataDir;
+	private ThreadGroup threadGroup;
 	private Thread thread;
 	private volatile boolean running = false;
+	private ClassLoader customLoader;
 
 	public LibretroEmbeddedSession(String sessionId)
 	{
 		this.sessionId = sessionId == null ? "session" : sessionId;
 		this.input = new QueueInputSource();
 		this.frames = new QueueFrameSink();
+		this.audio = new QueueAudioSink();
 	}
 
 	public String getSessionId() { return sessionId; }
 	public QueueInputSource getInputSource() { return input; }
 	public QueueFrameSink getFrameSink() { return frames; }
+	public QueueAudioSink getAudioSink() { return audio; }
 	public boolean isRunning() { return running; }
+
+	public void setInputSource(InputSource input)
+	{
+		if(input instanceof QueueInputSource) { this.input = (QueueInputSource)input; }
+	}
+
+	public void setFrameSink(FrameSink frames)
+	{
+		if(frames instanceof QueueFrameSink) { this.frames = (QueueFrameSink)frames; }
+	}
+
+	public void setAudioSink(AudioSink audio)
+	{
+		if(audio instanceof QueueAudioSink) { this.audio = (QueueAudioSink)audio; }
+	}
+
+	public void setDataDir(String dir) { this.dataDir = dir; }
 
 	public void start(final String[] args)
 	{
+		start(args, null);
+	}
+
+	public void start(final String[] args, final ClassLoader loader)
+	{
 		if(running) { return; }
 		running = true;
-		thread = new Thread(new Runnable()
+		this.customLoader = loader;
+		this.threadGroup = new ThreadGroup("fj2me-session-" + sessionId);
+		thread = new Thread(threadGroup, new Runnable()
 		{
 			@Override
 			public void run()
 			{
-				try { new Libretro(args, input, frames); }
-				finally { running = false; }
+				try
+				{
+					if(dataDir != null)
+					{
+						org.recompile.mobile.Mobile.setDataDir(dataDir);
+					}
+					if(loader != null)
+					{
+						Class<?> libretroClass = Class.forName("org.recompile.freej2me.Libretro", true, loader);
+						Constructor<?> ctor = libretroClass.getConstructor(String[].class, InputSource.class, FrameSink.class, AudioSink.class);
+						ctor.newInstance(args, input, frames, audio);
+					}
+					else
+					{
+						new Libretro(args, input, frames, audio);
+					}
+				}
+				catch(Exception e)
+				{
+					e.printStackTrace();
+				}
+				finally
+				{
+					running = false;
+				}
 			}
 		}, "FreeJ2ME-LibretroSession-" + sessionId);
 		thread.start();
@@ -54,7 +112,24 @@ public final class LibretroEmbeddedSession
 		running = false;
 		try { input.close(); } catch(IOException e) { }
 		try { frames.close(); } catch(IOException e) { }
-		if(thread != null) { thread.interrupt(); }
+		try { audio.close(); } catch(IOException e) { }
+		if(thread != null)
+		{
+			thread.interrupt();
+		}
+		if(threadGroup != null)
+		{
+			Thread[] threads = new Thread[threadGroup.activeCount() * 2 + 10];
+			int count = threadGroup.enumerate(threads);
+			for(int i = 0; i < count; i++)
+			{
+				threads[i].interrupt();
+			}
+		}
+		// Drain queues so the session doesn't hold references
+		if(input != null) { try { input.close(); } catch(IOException e) { } }
+		if(frames != null) { while(frames.poll() != null); }
+		if(audio != null) { while(audio.poll() != null); }
 	}
 
 	public void sendRaw(byte[] bytes)

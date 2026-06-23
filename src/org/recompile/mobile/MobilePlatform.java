@@ -617,7 +617,7 @@ public class MobilePlatform
 		{
 			try
 			{
-				File testDir = new File(Mobile.tempKJXDir);
+				File testDir = new File(Mobile.getTempKJXDir());
 				if(!testDir.isDirectory()) 
 				{
 					try 
@@ -652,7 +652,7 @@ public class MobilePlatform
 				byte[] buf = new byte[bufSize];
 	
 				// Write jad and parse its descriptors
-				tmpfile = new File(Mobile.tempKJXDir, kjxJadFileName);
+				tmpfile = new File(Mobile.getTempKJXDir(), kjxJadFileName);
 				try
 				{
 					FileOutputStream fos = new FileOutputStream(tmpfile);
@@ -684,7 +684,7 @@ public class MobilePlatform
 				}
 	
 				// Write jar
-				tmpfile = new File(Mobile.tempKJXDir, kjxJadFileName.substring(0, kjxJadFileName.length() -4) + ".jar");
+				tmpfile = new File(Mobile.getTempKJXDir(), kjxJadFileName.substring(0, kjxJadFileName.length() -4) + ".jar");
 				try
 				{
 					FileOutputStream fos = new FileOutputStream(tmpfile);
@@ -838,9 +838,9 @@ public class MobilePlatform
 		{
 			if(Mobile.deleteTemporaryKJXFiles && kjxJadFileName != null)
 			{
-				File tmpfile = new File(Mobile.tempKJXDir, kjxJadFileName.substring(0, kjxJadFileName.length() -4) + ".jar");
+				File tmpfile = new File(Mobile.getTempKJXDir(), kjxJadFileName.substring(0, kjxJadFileName.length() -4) + ".jar");
 				tmpfile.delete(); // Delete the temporary jar file
-				tmpfile = new File(Mobile.tempKJXDir, kjxJadFileName);
+				tmpfile = new File(Mobile.getTempKJXDir(), kjxJadFileName);
 				tmpfile.delete(); // Delete the temporary jad file
 			}
 

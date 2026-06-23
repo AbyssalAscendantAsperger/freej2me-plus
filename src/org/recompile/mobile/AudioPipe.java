@@ -20,7 +20,21 @@ public final class AudioPipe
 	private static AudioFormat currentFormat;
 	private static boolean announced = false;
 
+	private static final ThreadLocal<org.recompile.freej2me.session.AudioSink> threadSink = new ThreadLocal<org.recompile.freej2me.session.AudioSink>();
+	private static volatile org.recompile.freej2me.session.AudioSink globalSink;
+
 	private AudioPipe() { }
+
+	public static void setSink(org.recompile.freej2me.session.AudioSink sink) { globalSink = sink; }
+	public static void setThreadLocalSink(org.recompile.freej2me.session.AudioSink sink) { threadSink.set(sink); }
+	public static void clearThreadLocalSink() { threadSink.remove(); }
+
+	private static org.recompile.freej2me.session.AudioSink getSink()
+	{
+		org.recompile.freej2me.session.AudioSink s = threadSink.get();
+		if(s != null) { return s; }
+		return globalSink;
+	}
 
 	public static boolean enabled()
 	{
@@ -41,6 +55,19 @@ public final class AudioPipe
 	public static void setFormat(AudioFormat format)
 	{
 		if(!enabled() || format == null) { return; }
+
+		org.recompile.freej2me.session.AudioSink sink = getSink();
+		if(sink != null)
+		{
+			synchronized(LOCK)
+			{
+				if(sameFormat(currentFormat, format)) { return; }
+				currentFormat = format;
+				try { sink.sendFormat(format); }
+				catch(IOException e) { }
+			}
+			return;
+		}
 
 		synchronized(LOCK)
 		{
@@ -71,6 +98,18 @@ public final class AudioPipe
 	public static void writePcm(AudioFormat format, byte[] data, int offset, int length)
 	{
 		if(!enabled() || data == null || length <= 0) { return; }
+
+		org.recompile.freej2me.session.AudioSink sink = getSink();
+		if(sink != null)
+		{
+			synchronized(LOCK)
+			{
+				setFormat(format);
+				try { sink.sendPcm(format, data, offset, length); }
+				catch(IOException e) { }
+			}
+			return;
+		}
 
 		synchronized(LOCK)
 		{
