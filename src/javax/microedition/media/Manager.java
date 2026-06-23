@@ -42,6 +42,7 @@ import org.recompile.mobile.Mobile;
 import org.recompile.mobile.PlatformPlayer;
 import org.recompile.mobile.JavaxPlatformPlayer;
 import org.recompile.mobile.SiemensPlatformPlayer;
+import org.recompile.mobile.AudioPipe;
 
 public class Manager
 {
@@ -159,6 +160,8 @@ public class Manager
 	public static void playTone(final int note, int duration, int volume) throws MediaException
 	{
 		if(Mobile.sound == false) { return; }
+
+		if(AudioPipe.enabled()) { AudioPipe.playTone(note, duration, volume); return; }
 		
 		Mobile.log(Mobile.LOG_DEBUG, Manager.class.getPackage().getName() + "." + Manager.class.getSimpleName() + ": " + "Play Tone");
 

@@ -18,6 +18,7 @@ package org.recompile.freej2me;
 
 import org.recompile.mobile.Mobile;
 import org.recompile.mobile.MobilePlatform;
+import org.recompile.mobile.AudioPipe;
 
 import java.util.Timer;
 import java.util.TimerTask;
@@ -208,6 +209,8 @@ public class Libretro
 		
 		System.out.println("+READY");
 		System.out.flush();
+
+		if(AudioPipe.enabled()) { AudioPipe.playTone(69, 120, 25); }
 	}
 
 	private class LibretroIO

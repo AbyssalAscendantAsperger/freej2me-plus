@@ -34,6 +34,7 @@ import javax.sound.sampled.SourceDataLine;
 
 import javazoom.jl.decoder.Decoder;
 import javazoom.jl.decoder.JavaLayerException;
+import org.recompile.mobile.AudioPipe;
 
 /**
  * The <code>JavaSoundAudioDevice</code> implements an audio
@@ -98,6 +99,8 @@ public class JavaSoundAudioDevice extends AudioDeviceBase
 	// createSource fix.
 	protected void createSource() throws JavaLayerException
     {
+		if(AudioPipe.enabled()) { return; }
+
         Throwable t = null;
         try
         {
@@ -148,10 +151,17 @@ public class JavaSoundAudioDevice extends AudioDeviceBase
 	protected void writeImpl(short[] samples, int offs, int len)
 		throws JavaLayerException
 	{
+		byte[] b = toByteArray(samples, offs, len);
+		if(AudioPipe.enabled())
+		{
+			AudioPipe.writePcm(getAudioFormat(), b, 0, len*2);
+			AudioPipe.paceBytes(getAudioFormat(), len*2);
+			return;
+		}
+
 		if (source==null)
 			createSource();
 
-		byte[] b = toByteArray(samples, offs, len);
 		source.write(b, 0, len*2);
 	}
 

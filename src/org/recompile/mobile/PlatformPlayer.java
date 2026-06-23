@@ -17,6 +17,7 @@
 package org.recompile.mobile;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ import javax.sound.midi.SysexMessage;
 import javax.sound.midi.Track;
 import javax.sound.midi.Transmitter;
 import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
 import javax.sound.sampled.FloatControl;
@@ -671,6 +673,7 @@ public class PlatformPlayer implements Player
 		private boolean synthReserved = false;
 		public Receiver receiver;
 		private Transmitter transmitter;
+		private AudioPipeMidi.Handle pipeMidi;
 		private int numLoops = 0;
 		private long curTime = 0;
 
@@ -756,7 +759,7 @@ public class PlatformPlayer implements Player
 		{
 			try 
 			{
-				if(!synthReserved || midi.getSequence() == null) { prepareMidiSubsystem(); }
+				if(!synthReserved || midi.getSequence() == null || (AudioPipe.enabled() && pipeMidi == null)) { prepareMidiSubsystem(); }
 
 				if(curTime >= getDuration()) { setMediaTime(0); } // If mediaTime >= getDuration, we should start playing from the beginning
 				else { setMediaTime(curTime); } // Else, resume from where it stopped
@@ -765,6 +768,7 @@ public class PlatformPlayer implements Player
 				notifyListeners(PlayerListener.STARTED, getMediaTime());
 
 				midi.start();
+				if(AudioPipe.enabled() && pipeMidi != null) { pipeMidi.startPump("FreeJ2ME-MIDI-Pipe"); }
 			}
 			catch (Exception e) { Mobile.log(Mobile.LOG_ERROR, PlatformPlayer.class.getPackage().getName() + "." + PlatformPlayer.class.getSimpleName() + ": " + "Failed to clean MIDI sequencer and start playback:" + e.getMessage()); }
 		}
@@ -772,6 +776,7 @@ public class PlatformPlayer implements Player
 		public void stop()
 		{
 			midi.stop();
+			if(AudioPipe.enabled() && pipeMidi != null) { pipeMidi.stopPump(); }
 			getMediaTime();
 			state = Player.PREFETCHED;
 			notifyListeners(PlayerListener.STOPPED, getMediaTime());
@@ -781,6 +786,7 @@ public class PlatformPlayer implements Player
 		{ 
 			transmitter = null;
 			receiver = null;
+			if(AudioPipe.enabled() && pipeMidi != null) { pipeMidi.close(); pipeMidi = null; }
 			if(synthReserved) { Manager.synthIdxInUse[synthIdx] = false; synthReserved = false; }
 			if(midi != null) { midi.close(); }
 		}
@@ -836,8 +842,25 @@ public class PlatformPlayer implements Player
 
 		private void prepareMidiSubsystem() throws MidiUnavailableException, InvalidMidiDataException
 		{
-			if(midi.getSequence() == null || !synthReserved) 
+			if(midi.getSequence() == null || !synthReserved || (AudioPipe.enabled() && pipeMidi == null)) 
 			{
+				if(AudioPipe.enabled())
+				{
+					try
+					{
+						if(pipeMidi == null) { pipeMidi = AudioPipeMidi.open(Manager.getCustomSoundfont()); }
+						receiver = pipeMidi.receiver;
+						transmitter.setReceiver(receiver);
+						midi.setSequence(midiSequence);
+						synthReserved = true;
+						return;
+					}
+					catch(Exception e)
+					{
+						Mobile.log(Mobile.LOG_ERROR, PlatformPlayer.class.getPackage().getName() + "." + PlatformPlayer.class.getSimpleName() + ": AudioPipe MIDI synth failed, falling back local synth:" + e.getMessage());
+					}
+				}
+
 				this.synthIdx = Manager.retrieveAvailableSynthIndex();
 				Manager.synthIdxInUse[synthIdx] = true;
 				synthReserved = true;
@@ -1301,6 +1324,10 @@ public class PlatformPlayer implements Player
 		private Clip wavClip;
 		private int[] wavHeaderData = new int[7];
 		private int numLoops = 0;
+		private byte[] pipePcm;
+		private AudioFormat pipeFormat;
+		private volatile boolean pipeStop = false;
+		private long pipeMediaTime = 0L;
 
 		public wavPlayer(InputStream stream)
 		{
@@ -1328,6 +1355,31 @@ public class PlatformPlayer implements Player
 		{ 
 			try
 			{
+				if(AudioPipe.enabled())
+				{
+					byte[] decoded = null;
+					if(wavHeaderData[0] == 1) { decoded = WAVTools.upsample(tmpStream, wavHeaderData[1], WAVTools.hostSampleRate, (short) wavHeaderData[2], (short) wavHeaderData[4], wavHeaderData[5]); }
+					else if(wavHeaderData[0] == 6) { decoded = WAVLawDecoder.decodeALaw(tmpStream, wavHeaderData); }
+					else if(wavHeaderData[0] == 7) { decoded = WAVLawDecoder.decodeULaw(tmpStream, wavHeaderData); }
+					else if(wavHeaderData[0] == 17) { decoded = WAVImaADPCMDecoder.decodeImaAdpcm(new ByteArrayInputStream(tmpStream), wavHeaderData); }
+
+					if(decoded != null)
+					{
+						AudioInputStream in = AudioSystem.getAudioInputStream(new ByteArrayInputStream(decoded));
+						AudioFormat srcFormat = in.getFormat();
+						AudioFormat pcmFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, srcFormat.getSampleRate(), 16, srcFormat.getChannels(), srcFormat.getChannels() * 2, srcFormat.getSampleRate(), false);
+						AudioInputStream pcmIn = AudioSystem.getAudioInputStream(pcmFormat, in);
+						ByteArrayOutputStream out = new ByteArrayOutputStream();
+						byte[] buf = new byte[4096];
+						int n;
+						while((n = pcmIn.read(buf)) != -1) { out.write(buf, 0, n); }
+						pipePcm = out.toByteArray();
+						pipeFormat = pcmFormat;
+						state = Player.PREFETCHED;
+						return;
+					}
+				}
+
 				if(wavClip == null) { wavClip = AudioSystem.getClip(); }
 
 				/* Process the wave data */
@@ -1388,11 +1440,46 @@ public class PlatformPlayer implements Player
 			state = Player.STARTED;
 			notifyListeners(PlayerListener.STARTED, getMediaTime());
 
+			if(AudioPipe.enabled() && pipePcm != null && pipeFormat != null)
+			{
+				pipeStop = false;
+				new Thread(new Runnable()
+				{
+					@Override
+					public void run()
+					{
+						int pos = (int)Math.max(0.0f, Math.min((float)pipePcm.length, (float)pipeMediaTime * pipeFormat.getFrameRate() / 1000000.0f * (float)pipeFormat.getFrameSize()));
+						pos -= pos % Math.max(1, pipeFormat.getFrameSize());
+						while(!pipeStop && pos < pipePcm.length)
+						{
+							int n = Math.min(4096, pipePcm.length - pos);
+							AudioPipe.writePcm(pipeFormat, pipePcm, pos, n);
+							AudioPipe.paceBytes(pipeFormat, n);
+							pos += n;
+							pipeMediaTime = (long)((double)pos / (double)pipeFormat.getFrameSize() * 1000000.0 / (double)pipeFormat.getFrameRate());
+						}
+						if(!pipeStop)
+						{
+							state = Player.PREFETCHED;
+							notifyListeners(PlayerListener.END_OF_MEDIA, getMediaTime());
+						}
+					}
+				}, "FreeJ2ME-WAV-Pipe").start();
+				return;
+			}
+
 			wavClip.start();
 		}
 
 		public void stop()
 		{
+			if(AudioPipe.enabled() && pipePcm != null)
+			{
+				pipeStop = true;
+				state = Player.PREFETCHED;
+				notifyListeners(PlayerListener.STOPPED, getMediaTime());
+				return;
+			}
 			wavClip.stop();
 			wavClip.flush();
 			state = Player.PREFETCHED;
@@ -1442,11 +1529,11 @@ public class PlatformPlayer implements Player
 			return getMediaTime();
 		}
 
-		public long getMediaTime() { return wavClip.getMicrosecondPosition(); }
+		public long getMediaTime() { return (AudioPipe.enabled() && pipePcm != null) ? pipeMediaTime : wavClip.getMicrosecondPosition(); }
 
-		public long getDuration() { return  wavClip.getMicrosecondLength(); }
+		public long getDuration() { return (AudioPipe.enabled() && pipePcm != null && pipeFormat != null) ? (long)((double)pipePcm.length / (double)pipeFormat.getFrameSize() * 1000000.0 / (double)pipeFormat.getFrameRate()) : wavClip.getMicrosecondLength(); }
 
-		public boolean isRunning() { return wavClip.isRunning(); }
+		public boolean isRunning() { return (AudioPipe.enabled() && pipePcm != null) ? !pipeStop : wavClip.isRunning(); }
 	}
 
 	private class MP3Player extends audioplayer
