@@ -61,6 +61,7 @@ public class Libretro
 	String[] cfgtokens;
 
 	LibretroIO lio;
+	private volatile boolean terminating = false;
 
 	private final InputSource input;
 	private final FrameSink frameSink;
@@ -238,6 +239,34 @@ public class Libretro
 		if(AudioPipe.enabled()) { AudioPipe.playTone(69, 120, 25); }
 	}
 
+	private void terminateManagedSession(String reason, Throwable cause)
+	{
+		if(terminating) { return; }
+		terminating = true;
+		Mobile.log(Mobile.LOG_WARNING, Libretro.class.getPackage().getName() + "." + Libretro.class.getSimpleName() + ": " + reason);
+		if(cause != null)
+		{
+			try { cause.printStackTrace(); }
+			catch(Exception e) { }
+		}
+		try { if(lio != null) { lio.stop(); } }
+		catch(Exception e) { }
+		try { input.close(); }
+		catch(Exception e) { }
+		try { frameSink.close(); }
+		catch(Exception e) { }
+		try { if(audioSink != null) { audioSink.close(); } }
+		catch(Exception e) { }
+		try { AudioPipe.clearThreadLocalSink(); }
+		catch(Exception e) { }
+	}
+
+	private static void terminateProcessOrThrow(String reason)
+	{
+		if(Mobile.isManagedSession) { throw new RuntimeException(reason); }
+		System.exit(0);
+	}
+
 	private class LibretroIO
 	{
 		private Timer keytimer;
@@ -246,6 +275,16 @@ public class Libretro
 		{
 			keytimer = new Timer("Libretro-Timer");
 			keytimer.schedule(new LibretroTimerTask(), 0, 1);
+		}
+
+		public void stop()
+		{
+			if(keytimer != null)
+			{
+				try { keytimer.cancel(); }
+				catch(Exception e) { }
+				keytimer = null;
+			}
 		}
 
 		private class LibretroTimerTask extends TimerTask
@@ -465,6 +504,7 @@ public class Libretro
 									else
 									{
 										Mobile.log(Mobile.LOG_ERROR, Libretro.class.getPackage().getName() + "." + Libretro.class.getSimpleName() + ": " + "Couldn't load jar...");
+										if(Mobile.isManagedSession) { terminateManagedSession("Couldn't load jar", null); return; }
 										System.exit(0);
 									}
 								break;
@@ -643,6 +683,7 @@ public class Libretro
 									catch (Exception e)
 									{
 										Mobile.log(Mobile.LOG_DEBUG, Libretro.class.getPackage().getName() + "." + Libretro.class.getSimpleName() + ": " + "Error sending frame: "+e.getMessage());
+										if(Mobile.isManagedSession) { terminateManagedSession("Error sending frame", e); return; }
 										System.exit(0);
 									}
 									// We are now ready to start monitoring for pauses, the first frame was requested and sent
@@ -652,7 +693,11 @@ public class Libretro
 						}
 					}
 				}
-				catch (Exception e) { System.exit(0); }
+				catch (Exception e)
+				{
+					if(Mobile.isManagedSession) { terminateManagedSession("Input loop terminated", e); return; }
+					System.exit(0);
+				}
 			}
 		} // timer
 	} // LibretroIO
@@ -679,7 +724,7 @@ public class Libretro
 		if(!file.isFile())
 		{
 			Mobile.log(Mobile.LOG_ERROR, Libretro.class.getPackage().getName() + "." + Libretro.class.getSimpleName() + ": " + "File '" + loc + "' not found...");
-			System.exit(0);
+			terminateProcessOrThrow("File not found: " + loc);
 		}
 
 		return file.toURI().toString();
