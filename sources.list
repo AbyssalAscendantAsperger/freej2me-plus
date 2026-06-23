@@ -1192,3 +1192,7 @@ src/org/xml/sax/XMLFilter.java
 src/org/xml/sax/XMLReader.java
 src/org/xml/sax/ext/Attributes2.java
 src/org/xml/sax/helpers/DefaultHandler.java
+src/org/recompile/freej2me/transport/SimpleJSON.java
+src/org/recompile/freej2me/transport/WebSocketMain.java
+src/org/recompile/freej2me/transport/WebSocketServer.java
+src/org/recompile/freej2me/transport/WebSocketSession.java
