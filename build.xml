@@ -1,0 +1,77 @@
+<project name="FreeJ2ME">
+
+<!--
+****************************************************
+*    Class compilation
+****************************************************
+-->
+	<property name="source.version" value="1.6"/>
+	<property name="target.version" value="1.6"/>
+
+	<mkdir dir="build/classes"/>
+	<mkdir dir="build/classes/org/objectweb"/>
+
+    <echo message="Building Objectweb asm libraries" />
+	<javac
+		srcdir="src"
+		destdir="build/classes"
+		includeantruntime="false"
+		source="${source.version}"
+		target="${target.version}"
+		bootclasspath="${java.home}/lib/rt.jar"
+	>
+	<include name="org/objectweb/asm/**"/>
+	<exclude name="org/objectweb/asm/package.html"/>
+	<compilerarg value="-nowarn"/>
+	</javac>
+
+    <echo message="Building FreeJ2ME - AWT + Libretro" />
+	<javac
+		srcdir="src"
+		destdir="build/classes"
+		includeantruntime="false"
+		source="${source.version}"
+		target="${target.version}"
+		bootclasspath="${java.home}/lib/rt.jar"
+	>
+    <exclude name="org/objectweb/**"/>
+	<exclude name="libretro/**"/>
+	<compilerarg value="-Xlint:unchecked"/>
+	<compilerarg value="-Xlint:deprecation"/>
+	<compilerarg line="-encoding utf-8"/>
+	</javac>
+
+
+<!--
+****************************************************
+*    Jar Files
+****************************************************
+-->
+
+	<echo message="Building JAR - AWT" />
+	<jar
+		destfile="build/freej2me.jar">
+		<fileset dir="build/classes" excludes="**/Libretro*.class"/> <!-- Exclude Libretro classes -->
+		<fileset dir="resources" />
+		<metainf dir="META-INF" />
+		<manifest>
+			<!-- AWT Version -->
+			<attribute name="Main-Class" value="org.recompile.freej2me.FreeJ2ME"/>
+			<attribute name="Implementation-Title" value="FreeJ2ME"/>
+		</manifest>
+	</jar>
+
+	<echo message="Building JAR - Libretro" />
+	<jar
+		destfile="build/freej2me-lr.jar">
+		<fileset dir="build/classes" excludes="**/AWTGUI*.class, **/FreeJ2ME*.class, org/recompile/freej2me/ProgressBar.class, **/ScreenShot*.class"/> <!-- Exclude AWT classes (FreeJ2ME.class is only needed for AWT) -->
+		<fileset dir="resources" />
+		<metainf dir="META-INF" />
+		<manifest>
+			<!-- Libretro Version -->
+			<attribute name="Main-Class" value="org.recompile.freej2me.Libretro"/>
+			<attribute name="Implementation-Title" value="FreeJ2ME"/>
+		</manifest>
+	</jar>
+
+</project>
