@@ -11,7 +11,7 @@
 | Numpad's 7,8,9 |      1,2,3       |
 | Numpad's 4,5,6 |      4,5,6       |
 | Numpad's 1,2,3 |      7,8,9       |
-## Standard keybindings-
+## Standard keybindings
 
 All **common keybindings** plus following
 
