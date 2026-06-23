@@ -1058,16 +1058,15 @@ public class Mobile
 		dumpGraphicsObjects = config.sysSettings.get("dumpGraphicsObjects").equals("on");
 
 		String soundEnabled = config.sysSettings.get("sound");
-		sound = false;
-		if(soundEnabled.equals("on")) { sound = true; }
+		sound = "on".equals(soundEnabled);
 
 		String midiSoundfont = config.sysSettings.get("soundfont");
-		if(midiSoundfont.equals("Custom") && useCustomMidi == false)      { useCustomMidi = true;  Manager.changeCustomMidi(); }
-		else if(midiSoundfont.equals("Default") && useCustomMidi == true) { useCustomMidi = false; Manager.changeCustomMidi(); }
+		if("Custom".equals(midiSoundfont) && useCustomMidi == false)      { useCustomMidi = true;  Manager.changeCustomMidi(); }
+		else if("Default".equals(midiSoundfont) && useCustomMidi == true) { useCustomMidi = false; Manager.changeCustomMidi(); }
 
 		String textFont = config.sysSettings.get("textfont");
-		if(textFont.equals("Custom"))       { useCustomTextFont = true; }
-		else if(textFont.equals("Default")) { useCustomTextFont = false; }
+		if("Custom".equals(textFont))       { useCustomTextFont = true; }
+		else if("Default".equals(textFont)) { useCustomTextFont = false; }
 
 		// Then move on to per-app settings
 		lcdWidth = Integer.parseInt(config.settings.get("scrwidth"));

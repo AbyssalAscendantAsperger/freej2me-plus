@@ -43,8 +43,8 @@ public class Config
 	private String configFile = "";
 
 	private File sFile;
-	private final String systemPath = "freej2me_system/";
-	private final String systemFile = systemPath + "freej2me.conf";
+	private String systemPath = "";
+	private String systemFile = "";
 
 	public static int inputKeycodes[] = new int[] 
 	{ 
@@ -99,8 +99,11 @@ public class Config
         {
             // For ISO-8859-1 encodings, we'll use UTF-8 for save paths, helps with chinese and special characters (Mirror RecordStore.java)
             String activeEncoding = Mobile.getSessionProperty("file.encoding");
-            configPath = new String((Mobile.getPlatform().dataPath + "./config/" + appname).getBytes(activeEncoding), activeEncoding.equals(Mobile.supportedEncodings[Mobile.ISO_8859_1]) ? "UTF-8" : Mobile.textEncoding);
-			configFile = configPath + "/game.conf";
+            String baseDataDir = Mobile.getDataDir();
+            configPath = new String((baseDataDir + File.separatorChar + "config" + File.separatorChar + appname).getBytes(activeEncoding), activeEncoding.equals(Mobile.supportedEncodings[Mobile.ISO_8859_1]) ? "UTF-8" : Mobile.textEncoding);
+			configFile = configPath + File.separatorChar + "game.conf";
+			systemPath = baseDataDir + File.separatorChar + "freej2me_system" + File.separatorChar;
+			systemFile = systemPath + "freej2me.conf";
         }
         catch (UnsupportedEncodingException e) { }
 		// Load Config //
