@@ -1,0 +1,1250 @@
+/*
+	This file is part of FreeJ2ME.
+
+	FreeJ2ME is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	FreeJ2ME is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with FreeJ2ME.  If not, see http://www.gnu.org/licenses/
+*/
+package org.recompile.mobile;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
+
+import javax.microedition.lcdui.Display;
+import javax.microedition.lcdui.Canvas;
+import javax.microedition.media.Manager;
+import javax.microedition.midlet.MIDlet;
+
+import org.recompile.freej2me.Config;
+
+import com.nttdocomo.ui.IApplication;
+
+/*
+
+	Mobile
+
+	Provides MobilePlatform access to mobile app
+
+*/
+
+public class Mobile
+{
+	private static MobilePlatform platform;
+
+	// Logging
+	public static File logFile;
+	private static BufferedWriter logWriter;
+	private static final Queue<Runnable> pendingLogs = new LinkedList<Runnable>();
+
+	public static final String[] supportedEncodings = new String[] {"ISO_8859_1", "Shift_JIS", "EUC_KR"};
+	public static final byte ISO_8859_1 = 0;
+	public static final byte SHIFT_JIS  = 1;
+	public static final byte EUC_KR     = 2;
+	// Default MIDP encoding, will be changed by DoJa and any other implementation that use a different encoding
+	public static String textEncoding = supportedEncodings[ISO_8859_1];
+
+	private static final ThreadLocal<String> dataDir = new ThreadLocal<String>();
+	public static void setDataDir(String dir) { dataDir.set(dir); }
+	public static String getDataDir()
+	{
+		String d = dataDir.get();
+		if(d != null) { return d; }
+		return "freej2me_system";
+	}
+
+	private static final InheritableThreadLocal<Map<String, String>> sessionProperties = new InheritableThreadLocal<Map<String, String>>() {
+		protected Map<String, String> initialValue() { return new HashMap<String, String>(); }
+	};
+
+	public static String getSessionProperty(String key)
+	{
+		Map<String, String> map = sessionProperties.get();
+		if(map.containsKey(key)) { return map.get(key); }
+		return System.getProperty(key);
+	}
+
+	public static String getSessionProperty(String key, String def)
+	{
+		Map<String, String> map = sessionProperties.get();
+		if(map.containsKey(key)) { return map.get(key); }
+		String val = System.getProperty(key);
+		return val != null ? val : def;
+	}
+
+	public static String setSessionProperty(String key, String value)
+	{
+		return sessionProperties.get().put(key, value);
+	}
+
+	public static void initSessionProperties()
+	{
+		sessionProperties.set(new HashMap<String, String>());
+	}
+
+	public static boolean isManagedSession = false;
+
+	private static Display display;
+
+	// Used mostly for pause/resume requests
+	public static MIDlet midlet;
+	public static IApplication iAppli;
+
+	public static boolean isDoJa = false;
+	public static boolean isKDDI = false;
+	public static boolean isSKT = false;
+
+	// These flags are used for general compatibility adjustments within FreeJ2ME
+	public static int DoJaVersion = 200; // Default DoJa to "Star 2.0" (values are 10, 20, 30, 35, 40, etc for doja x.x, and multiples of 100 are Star)
+	public static boolean usingMessagingAPI = false;
+
+	// Mobile should contain flags to any and all "speedhacks" present in FreeJ2ME
+	public static boolean noAlphaOnBlankImages = true;
+	public static boolean halfResM3GRaster = false;
+	public static boolean halfResMCV3Raster = false;
+	public static boolean MCV3NoLighting = false;
+
+	// Config file handle
+	public static Config config;
+
+	public static int lcdWidth = 240;
+	public static int lcdHeight = 320;
+
+	// Display rotation in degrees.
+	public static int rotateDisplay = 0;
+
+	// Support for loading custom MIDI soundfonts
+	public static boolean useCustomMidi = false;
+
+	// Support for loading custom text fonts
+	public static boolean useCustomTextFont = false;
+	public static byte fontSizeOffset = 0; // Size offset to tweak font sizing
+
+	// Enable/Disable audio dumping
+	public static boolean dumpAudioStreams = false;
+
+	// Enable/Disable graphics data dumping (unused for now)
+	public static boolean dumpGraphicsObjects = false;
+
+	// Enable/disable logging to the console and optionally to a file
+	public static String getLogFilePath() { return getDataDir() + File.separatorChar + "FreeJ2ME.log"; }
+	public static String getSiemensDataPath() { return getDataDir() + File.separatorChar + "SiemensData" + File.separatorChar; }
+	public static String getXceDataPath() { return getDataDir() + File.separatorChar + "XceData" + File.separatorChar; }
+	public static byte minLogLevel = 2;
+
+	// Log Levels
+	public static final byte LOG_NONE    = 0;
+	public static final byte LOG_DEBUG   = 1;
+	public static final byte LOG_INFO    = 2;
+	public static final byte LOG_WARNING = 3;
+	public static final byte LOG_ERROR   = 4;
+	public static final byte LOG_FATAL   = 5;
+
+	// KDDI/KJX variables
+	public static String getTempKJXDir() { return getDataDir() + File.separatorChar + "FreeJ2MEDumps" + File.separatorChar + "KDDI" + File.separatorChar; }
+	public static boolean deleteTemporaryKJXFiles = true;
+
+	//LCDUI colors
+	public static int lcduiBGColor = 0xFFFFFF;
+	public static int lcduiStrokeColor = 0x777777;
+	public static int lcduiTextColor = 0x000000;
+
+	// Mask for simulating device backlights of early nokias, etc. Used by Display's flashBacklight for example
+									  // Disabled  , Green     , Cyan      , Orange    , Violet    , Red       , FunLights (can change)
+	public static int[] lcdMaskColors = {0xFFFFFFFF, 0xFF77EF5A, 0xFF5676F6, 0xFFEE9930, 0xFFC47AFF, 0xFFFF6262, 0xFFFFFFFF};
+	public static int maskIndex = 1;
+	public static boolean renderLCDMask = false;
+
+	// Moto Funlight Regions (here, corners of the screen, Display region is handled through the LCD mask)
+	public static boolean funLightsEnabled = false;
+	public static int[] funLightRegionColor = 
+	{
+		0x88FFFFFE, // Blank Region color, not used
+		0x88FFFFFE, // Display Region color, not used (handled by lcdMaskColors above)
+		0x88FFFFFE, // Navigation Key Region
+		0x88FFFFFE, // Numeric Keypad Region
+		0x88FFFFFE, // Sidebands Region
+	};
+	public static byte funLightRegionSize = 8;
+
+	// Compatibility settings
+	public static boolean compatFantasyZoneFix           = false;
+	public static boolean compatTranslateToOriginOnReset = false;
+	public static boolean compatImmediateRepaints        = false;
+	public static boolean compatOverridePlatformChecks   = true;
+	public static boolean compatSiemensFriendlyDrawing   = false;
+	public static boolean compatIgnoreVolumeChanges      = false;
+	public static boolean compatMCV3HorizontalFovFix     = false;
+
+	// M3G Debug Rendering settings
+	public static boolean M3GRenderUntexturedPolygons = false;
+	public static boolean M3GRenderWireframe = false;
+
+	// MascotCapsuleV3 Debug Rendering settings
+	public static boolean MCV3ShowTimeMetrics = false;
+	public static boolean MCV3ShowHeapUsage = false;
+
+	// Keycode modifiers
+	public static boolean kddi = false;
+	public static boolean lg = false;
+	public static boolean motorola = false;
+	public static boolean motoV8 = false;
+	public static boolean motoTriplets = false;
+	public static boolean motoA1000 = false;
+	public static boolean nokiaKeyboard = false;
+	public static boolean sagem = false;
+	public static boolean siemens = false;
+	public static boolean sharp = false;
+	public static boolean skt = false;
+
+	/*                                               
+	 * For AWTGUI, the input array is as follows:    [LeftSoft, RightSoft, Up, Left, Fire, Right, Down, 1, 2, 3, 4, 5, 6, 7, 8, 9, *, 0, #, Fast-Forward, Screenshot]
+	 * Whereas in SDL it's:                          [Fire, 7, 9, #, LeftSoft, 0, RightSoft, 5, CLR, 1, 3, Up, Down, Left, Right, 2(todo), 4(todo), 6(todo), 8(todo)] // Special hotkeys are not implemented
+	 * While on Libretro, it's:                      [Up, Down, Left, Right, 9, 7, 0, Fire, RightSoft, LeftSoft, 1,  3.  *.  #,  2,  4,  6,  8,  5] // Fast-Forward, pause/resume and screenshot are frontend-governed
+	 * private static final int[] libretroKeycodes = {0,  1,    2,     3,    4, 5, 6,  7,     8,          9,     10, 11, 12, 13, 14, 15, 16, 17, 18}; // Doesn't need to be explicitly defined, it's the default array
+	 */
+	private static final int[] awtguiKeycodes      = {9,  8,    0,     2,    7, 3, 1, 10,    14,         11,     15, 18, 16,  5, 17,  4, 12,  6, 13, 19, 20, 21, 22};
+	private static final int[] sdlguiKeycodes      = {7,  5,    4,    13,    9, 6, 8, 18,    19,         10,     11,  0,  1,  2,  3, 14, 15, 16, 17, 20};
+	private static final String[] keyArray = {"Up", "Down", "Left", "Right", "9", "7", "0", "Fire", "RightSoft", "LeftSoft", "1", "3", "*", "#", "2", "4", "6", "8", "5", "CLR", "Fast Forward", "Screenshot", "MIDlet Pause/Resume"};
+
+	// Set whether audio should be enabled or not. Can work around jars that crash FreeJ2ME due to audio
+	public static boolean sound = true;
+
+	// Support for explicit FPS limit on jars that require it to work properly
+	public static int limitFPS = 0;
+
+	// First ever real hack in FreeJ2ME. Tries to unlock the framerate based on agressiveness
+	// 0 = disabled
+	// 1 = safe (overrides only Thread.sleep() calls around a flush/paint call)
+	// 2 = extended (overrides any and all Thread.sleep() calls)
+	// 3 = aggressive (also overrides System.currentTimeMillis and NanoTime)
+	public static byte unlockFramerateHack = 0;
+
+	// Libretro flags
+	public static boolean isFastForwarding = false;
+	public static boolean isPaused = false;
+	public static volatile float fastForwardMultiplier = 20.0f;
+	public static byte libretroRestartRequested = 0; // Set when FreeJ2ME has to be restarted in some way (often to change character encoding)
+	public static byte libretroEncodingRequested = 0; // Encoding FreeJ2ME requested to be re-opened with (check the restartApp() method below)
+
+	// Vodafone has a use for this, but maybe this can be made into an actual viewport AA toggle
+	public static boolean isAAEnabled = false;
+
+	// Vibration support for Libretro and SDL
+	public static int vibrationDuration = 0;
+	public static int vibrationStrength = 0xFFFF;
+
+	//KDDI keycodes
+	public static final int KDDI_UP    = 1;
+	public static final int KDDI_DOWN  = 6;
+	public static final int KDDI_LEFT  = 2; 
+	public static final int KDDI_RIGHT = 5;
+	public static final int KDDI_SOFT1 = 20; 
+	public static final int KDDI_SOFT2 = 21; 
+	public static final int KDDI_FIRE  = 8; // TODO, ELEVATOR ACTION doesn't use this key for anything, CLR takes its place so let's duplicate for now
+	public static final int KDDI_CLR   = 8;
+
+	//LG keycodes
+	public static final int LG_UP    = -1;
+	public static final int LG_DOWN  = -2;
+	public static final int LG_LEFT  = -3;
+	public static final int LG_RIGHT = -4;
+	public static final int LG_SOFT1 = -202; 
+	public static final int LG_SOFT2 = -203; 
+	public static final int LG_FIRE  = -5;
+	public static final int LG_CLR   = -204;
+
+	//Motorola E1000/Alcatel/Softbank keycodes
+	public static final int MOTOROLA_UP    = -1;
+	public static final int MOTOROLA_DOWN  = -6;
+	public static final int MOTOROLA_LEFT  = -2;
+	public static final int MOTOROLA_RIGHT = -5;
+	public static final int MOTOROLA_SOFT1 = -21; 
+	public static final int MOTOROLA_SOFT2 = -22; 
+	public static final int MOTOROLA_FIRE  = -20;
+
+	//Motorola V8 keycodes
+	public static final int MOTOV8_UP    = -1;
+	public static final int MOTOV8_DOWN  = -2;
+	public static final int MOTOV8_LEFT  = -3;
+	public static final int MOTOV8_RIGHT = -4;
+	public static final int MOTOV8_SOFT1 = -21;
+	public static final int MOTOV8_SOFT2 = -22;
+	public static final int MOTOV8_FIRE  = -5;
+
+	//Motorola Triplets keycodes
+	public static final int TRIPLETS_UP    = 1;
+	public static final int TRIPLETS_DOWN  = 6;
+	public static final int TRIPLETS_LEFT  = 2;
+	public static final int TRIPLETS_RIGHT = 5;
+	public static final int TRIPLETS_SOFT1 = 21; 
+	public static final int TRIPLETS_SOFT2 = 22; 
+	public static final int TRIPLETS_FIRE  = 20;
+
+	//Motorola A1000 keycodes
+	public static final int A1000_UP    = -1;
+	public static final int A1000_DOWN  = -2;
+	public static final int A1000_LEFT  = -3; 
+	public static final int A1000_RIGHT = -4; 
+	public static final int A1000_SOFT1 = -10;
+	public static final int A1000_SOFT2 = -11;
+	public static final int A1000_FIRE  =  13;
+
+	//Nokia keycodes
+	public static final int NOKIA_UP    = -1; // KEY_UP_ARROW = -1;
+	public static final int NOKIA_DOWN  = -2; // KEY_DOWN_ARROW = -2;
+	public static final int NOKIA_LEFT  = -3; // KEY_LEFT_ARROW = -3;
+	public static final int NOKIA_RIGHT = -4; // KEY_RIGHT_ARROW = -4;
+	public static final int NOKIA_SOFT1 = -6; // KEY_SOFTKEY1 = -6; (Left Soft)
+	public static final int NOKIA_SOFT2 = -7; // KEY_SOFTKEY2 = -7; (Right Soft)
+	public static final int NOKIA_SOFT3 = -5; // KEY_SOFTKEY3 = -5; (Fire)
+	public static final int NOKIA_END   = -11; // KEY_END = -11;
+	public static final int NOKIA_SEND  = -10; // KEY_SEND = -10;
+
+	//Nokia keyboard keycodes
+	public static final int NOKIAKB_UP    = -1; // KEY_UP_ARROW = -1;
+	public static final int NOKIAKB_DOWN  = -2; // KEY_DOWN_ARROW = -2;
+	public static final int NOKIAKB_LEFT  = -3; // KEY_LEFT_ARROW = -3;
+	public static final int NOKIAKB_RIGHT = -4; // KEY_RIGHT_ARROW = -4;
+	public static final int NOKIAKB_SOFT1 = -6; // KEY_SOFTKEY1 = -6; (Left Soft)
+	public static final int NOKIAKB_SOFT2 = -7; // KEY_SOFTKEY2 = -7; (Right Soft)
+	public static final int NOKIAKB_SOFT3 = -5; // KEY_SOFTKEY3 = -5; (Fire)
+	public static final int NOKIAKB_NUM0  = 109;
+	public static final int NOKIAKB_NUM1  = 114;
+	public static final int NOKIAKB_NUM2  = 116;
+	public static final int NOKIAKB_NUM3  = 121;
+	public static final int NOKIAKB_NUM4  = 102;
+	public static final int NOKIAKB_NUM5  = 103;
+	public static final int NOKIAKB_NUM6  = 104;
+	public static final int NOKIAKB_NUM7  = 118;
+	public static final int NOKIAKB_NUM8  = 98;
+	public static final int NOKIAKB_NUM9  = 110;
+	public static final int NOKIAKB_STAR  = 117;
+	public static final int NOKIAKB_POUND = 106;
+
+	//Sagem keycodes (just nokia with inverted softkeys)
+	public static final int SAGEM_UP    = -1; // KEY_UP_ARROW = -1;
+	public static final int SAGEM_DOWN  = -2; // KEY_DOWN_ARROW = -2;
+	public static final int SAGEM_LEFT  = -3; // KEY_LEFT_ARROW = -3;
+	public static final int SAGEM_RIGHT = -4; // KEY_RIGHT_ARROW = -4;
+	public static final int SAGEM_SOFT1 = -7; // KEY_SOFTKEY1 = -7; (Left Soft)
+	public static final int SAGEM_SOFT2 = -6; // KEY_SOFTKEY2 = -6; (Right Soft)
+	public static final int SAGEM_SOFT3 = -5; // KEY_SOFTKEY3 = -5; (Fire)
+
+	//Sharp keycodes
+	public static final int SHARP_UP    = 1;  // KEY_UP_ARROW = 1;
+	public static final int SHARP_DOWN  = 6;  // KEY_DOWN_ARROW = 6;
+	public static final int SHARP_LEFT  = 2;  // KEY_LEFT_ARROW = 2;
+	public static final int SHARP_RIGHT = 5;  // KEY_RIGHT_ARROW = 5;
+	public static final int SHARP_SOFT1 = 21; // KEY_SOFTKEY1 = 21; (Left Soft)
+	public static final int SHARP_SOFT2 = 22; // KEY_SOFTKEY2 = 22; (Right Soft)
+	public static final int SHARP_FIRE  = 20; // KEY_SOFTKEY3 = 20; (Fire)
+
+	//Siemens keycodes
+	public static final int SIEMENS_UP    = -59;
+	public static final int SIEMENS_DOWN  = -60;
+	public static final int SIEMENS_LEFT  = -61;
+	public static final int SIEMENS_RIGHT = -62;
+	public static final int SIEMENS_SOFT1 = -1; 
+	public static final int SIEMENS_SOFT2 = -4; 
+	public static final int SIEMENS_FIRE  = -26; 
+
+	public static MobilePlatform getPlatform() { return platform; }
+
+	public static void setPlatform(MobilePlatform p, Runnable r) 
+	{ 
+		platform = p; 
+
+		config = new Config();
+		config.onChange = r;
+	}
+
+	public static Display getDisplay() { return display; }
+
+	public static void setDisplay(Display d) { display = d; }
+
+	public static InputStream getResourceAsStream(Class c, String resource)
+	{
+		return platform.loader.getMIDletResourceAsStream(resource);
+	}
+
+	public static InputStream getMIDletResourceAsStream(String resource)
+	{
+		return platform.loader.getMIDletResourceAsStream(resource);
+	}
+
+	public static byte[] getMIDletResourceAsByteArray(String resource)
+	{
+		return platform.loader.getMIDletResourceAsByteArray(resource);
+	}
+
+	public static final int convertSDLKeycode(int keycode) 
+	{
+		return sdlguiKeycodes[keycode]; // Cast the received sdl key to the correct value.
+	}
+
+	public static final int convertAWTKeycode(int keycode) 
+	{
+		return awtguiKeycodes[keycode]; // Cast the received awt key to the correct value.
+	}
+
+	public static final int getMobileKey(int keycode) 
+	{
+		// These keys are overridden by the modifier variables (comments simulate the Libretro interface with a NS Pro Controller)
+		if(kddi)
+		{
+			switch(keycode)
+			{
+				case 0:  return KDDI_UP; // Up
+				case 1:  return KDDI_DOWN; // Down
+				case 2:  return KDDI_LEFT; // Left
+				case 3:  return KDDI_RIGHT; // Right
+				case 7:  return KDDI_FIRE; // Y
+				case 8:  return KDDI_SOFT2; // Start
+				case 9:  return KDDI_SOFT1; // Select
+				case 19: return KDDI_CLR;
+			}
+		}
+		if(lg)
+		{
+			switch(keycode)
+			{
+				case 0:  return LG_UP; // Up
+				case 1:  return LG_DOWN; // Down
+				case 2:  return LG_LEFT; // Left
+				case 3:  return LG_RIGHT; // Right
+				case 7:  return LG_FIRE; // Y
+				case 8:  return LG_SOFT2; // Start
+				case 9:  return LG_SOFT1; // Select
+				case 19: return LG_CLR;
+			}
+		}
+		if(motorola)
+		{
+			switch(keycode)
+			{
+				case 0: return MOTOROLA_UP; // Up
+				case 1: return MOTOROLA_DOWN; // Down
+				case 2: return MOTOROLA_LEFT; // Left
+				case 3: return MOTOROLA_RIGHT; // Right
+				case 7: return MOTOROLA_FIRE; // Y
+				case 8: return MOTOROLA_SOFT2; // Start
+				case 9: return MOTOROLA_SOFT1; // Select
+			}
+		}
+		if(motoTriplets)
+		{
+			switch(keycode)
+			{
+				case 0: return TRIPLETS_UP; // Up
+				case 1: return TRIPLETS_DOWN; // Down
+				case 2: return TRIPLETS_LEFT; // Left
+				case 3: return TRIPLETS_RIGHT; // Right
+				case 7: return TRIPLETS_FIRE; // Y
+				case 8: return TRIPLETS_SOFT2; // Start
+				case 9: return TRIPLETS_SOFT1; // Select
+			}
+		}
+		if(motoV8)
+		{
+			switch(keycode)
+			{
+				case 0: return MOTOV8_UP; // Up
+				case 1: return MOTOV8_DOWN; // Down
+				case 2: return MOTOV8_LEFT; // Left
+				case 3: return MOTOV8_RIGHT; // Right
+				case 7: return MOTOV8_FIRE; // Y
+				case 8: return MOTOV8_SOFT2; // Start
+				case 9: return MOTOV8_SOFT1; // Select
+			}
+		}
+		if(motoA1000)
+		{
+			switch(keycode)
+			{
+				case 0: return A1000_UP; // Up
+				case 1: return A1000_DOWN; // Down
+				case 2: return A1000_LEFT; // Left
+				case 3: return A1000_RIGHT; // Right
+				case 7: return A1000_FIRE; // Y
+				case 8: return A1000_SOFT2; // Start
+				case 9: return A1000_SOFT1; // Select
+			}
+		}
+		if(nokiaKeyboard)
+		{
+			switch(keycode)
+			{
+				case 0:  return NOKIAKB_UP; // Up
+				case 1:  return NOKIAKB_DOWN; // Down
+				case 2:  return NOKIAKB_LEFT; // Left
+				case 3:  return NOKIAKB_RIGHT; // Right
+				case 4:  return NOKIAKB_NUM9; // A
+				case 5:  return NOKIAKB_NUM7; // B
+				case 6:  return NOKIAKB_NUM0; // X
+				case 7:  return NOKIAKB_SOFT3; // Y
+				case 8:  return NOKIAKB_SOFT2; // Start
+				case 9:  return NOKIAKB_SOFT1; // Select
+				case 10: return NOKIAKB_NUM1; // L
+				case 11: return NOKIAKB_NUM3; // R
+				case 12: return NOKIAKB_STAR; // L2
+				case 13: return NOKIAKB_POUND; // R2
+				case 14: return NOKIAKB_NUM2; // Up (Analog)
+				case 15: return NOKIAKB_NUM4; // Left (Analog)
+				case 16: return NOKIAKB_NUM6; // Right (Analog)
+				case 17: return NOKIAKB_NUM8; // Down (Analog)
+				case 18: return NOKIAKB_NUM5; // User-Mappable (often same as case 7)
+			}
+		}
+		if(sagem)
+		{
+			switch(keycode)
+			{
+				case 0: return SAGEM_UP; // Up
+				case 1: return SAGEM_DOWN; // Down
+				case 2: return SAGEM_LEFT; // Left
+				case 3: return SAGEM_RIGHT; // Right
+				case 7: return SAGEM_SOFT3; // Y
+				case 8: return SAGEM_SOFT2; // Start
+				case 9: return SAGEM_SOFT1; // Select
+			}
+		}
+		if(siemens)
+		{
+			switch(keycode)
+			{
+				case 0: return SIEMENS_UP; // Up
+				case 1: return SIEMENS_DOWN; // Down
+				case 2: return SIEMENS_LEFT; // Left
+				case 3: return SIEMENS_RIGHT; // Right
+				case 7: return SIEMENS_FIRE; // Y
+				case 8: return SIEMENS_SOFT2; // Start
+				case 9: return SIEMENS_SOFT1; // Select
+			}
+		}
+		if(sharp)
+		{
+			switch(keycode)
+			{
+				case 0: return SHARP_UP; // Up
+				case 1: return SHARP_DOWN; // Down
+				case 2: return SHARP_LEFT; // Left
+				case 3: return SHARP_RIGHT; // Right
+				case 7: return SHARP_FIRE; // Y
+				case 8: return SHARP_SOFT2; // Start
+				case 9: return SHARP_SOFT1; // Select
+			}
+		}
+		if(skt)
+		{
+			switch(keycode)
+			{
+				case 0: return Canvas.KEY_UP; // Up
+				case 1: return Canvas.KEY_DOWN; // Down
+				case 2: return Canvas.KEY_LEFT; // Left
+				case 3: return Canvas.KEY_RIGHT; // Right
+				case 7: return Canvas.KEY_FIRE; // Y
+				case 8: return Canvas.KEY_COML; // Start
+				case 9: return Canvas.KEY_COMR; // Select
+				case 19: return Canvas.KEY_CLR; // SKT's CLR key is specific to it (value 8)
+			}
+		}
+
+		// J2ME Canvas standard keycodes (not exactly standard, just the most common mappings), to match against any keys not covered above.
+		switch(keycode)
+		{
+			case 0:  return NOKIA_UP; // Up
+			case 1:  return NOKIA_DOWN; // Down
+			case 2:  return NOKIA_LEFT; // Left
+			case 3:  return NOKIA_RIGHT; // Right
+			case 4:  return Canvas.KEY_NUM9; // A
+			case 5:  return Canvas.KEY_NUM7; // B
+			case 6:  return Canvas.KEY_NUM0; // X
+			case 7:  return NOKIA_SOFT3; // Y
+			case 8:  return NOKIA_SOFT2; // Start
+			case 9:  return NOKIA_SOFT1; // Select
+			case 10: return Canvas.KEY_NUM1; // L
+			case 11: return Canvas.KEY_NUM3; // R
+			case 12: return Canvas.KEY_STAR; // L2
+			case 13: return Canvas.KEY_POUND; // R2
+			case 14: return Canvas.KEY_NUM2; // Up (Analog)
+			case 15: return Canvas.KEY_NUM4; // Left (Analog)
+			case 16: return Canvas.KEY_NUM6; // Right (Analog)
+			case 17: return Canvas.KEY_NUM8; // Down (Analog)
+			case 18: return Canvas.KEY_NUM5; // User-Mappable (often same as case 7)
+			case 19: return KDDI_CLR; // KDDI's CLR key is used for some non-KDDI jars
+		}
+
+		// If a matching key wasn't found, return 0;
+		return 0;
+	}
+
+	// This is just for a correct handling of Canvas.getGameAction(), though it didn't fix some siemens jars that still get stuck in the LCDUI menu
+	public static final int getGameAction(int keycode) 
+	{
+		// NOTE: Canvas doesn't support SOFT keys by default. Those cases are all returning NOKIA softkeys to abstract lcdui's menu navigation
+		if (kddi)
+		{
+			switch(keycode)
+			{
+				case KDDI_UP:    return Canvas.UP; // Up
+				case KDDI_DOWN:  return Canvas.DOWN; // Down
+				case KDDI_LEFT:  return Canvas.LEFT; // Left
+				case KDDI_RIGHT: return Canvas.RIGHT; // Right
+				case KDDI_FIRE:  return Canvas.FIRE; // Y
+				case KDDI_SOFT1: return Canvas.GAME_A;
+				case KDDI_SOFT2: return Canvas.GAME_B;
+			}
+		}
+		if (lg) 
+		{
+			switch (keycode) 
+			{
+				case LG_UP:    return Canvas.UP; // Up
+				case LG_DOWN:  return Canvas.DOWN; // Down
+				case LG_LEFT:  return Canvas.LEFT; // Left
+				case LG_RIGHT: return Canvas.RIGHT; // Right
+				case LG_FIRE:  return Canvas.FIRE; // Y
+			}
+		}
+		if (motorola) 
+		{
+			switch (keycode) 
+			{
+				case MOTOROLA_UP:    return Canvas.UP; // Up
+				case MOTOROLA_DOWN:  return Canvas.DOWN; // Down
+				case MOTOROLA_LEFT:  return Canvas.LEFT; // Left
+				case MOTOROLA_RIGHT: return Canvas.RIGHT; // Right
+				case MOTOROLA_FIRE:  return Canvas.FIRE; // Y
+			}
+		}
+		if (motoTriplets) 
+		{
+			switch (keycode) 
+			{
+				case TRIPLETS_UP:    return Canvas.UP; // Up
+				case TRIPLETS_DOWN:  return Canvas.DOWN; // Down
+				case TRIPLETS_LEFT:  return Canvas.LEFT; // Left
+				case TRIPLETS_RIGHT: return Canvas.RIGHT; // Right
+				case TRIPLETS_FIRE:  return Canvas.FIRE; // Y
+			}
+		}
+		if (motoV8) 
+		{
+			switch (keycode) 
+			{
+				case MOTOV8_UP:    return Canvas.UP; // Up
+				case MOTOV8_DOWN:  return Canvas.DOWN; // Down
+				case MOTOV8_LEFT:  return Canvas.LEFT; // Left
+				case MOTOV8_RIGHT: return Canvas.RIGHT; // Right
+				case MOTOV8_FIRE:  return Canvas.FIRE; // Y
+
+			}
+		}
+		if (motoA1000) 
+		{
+			switch (keycode) 
+			{
+				case A1000_UP:    return Canvas.UP; // Up
+				case A1000_DOWN:  return Canvas.DOWN; // Down
+				case A1000_LEFT:  return Canvas.LEFT; // Left
+				case A1000_RIGHT: return Canvas.RIGHT; // Right
+				case A1000_FIRE:  return Canvas.FIRE; // Y
+			}
+		}
+		if (nokiaKeyboard) 
+		{
+			switch (keycode) 
+			{
+				case NOKIAKB_UP:    return Canvas.UP; // Up
+				case NOKIAKB_DOWN:  return Canvas.DOWN; // Down
+				case NOKIAKB_LEFT:  return Canvas.LEFT; // Left
+				case NOKIAKB_RIGHT: return Canvas.RIGHT; // Right
+				case NOKIAKB_NUM9:  return Canvas.GAME_D; // A
+				case NOKIAKB_NUM7:  return Canvas.GAME_C; // B
+				case NOKIAKB_SOFT3: return Canvas.FIRE; // Y
+				case NOKIAKB_NUM1:  return Canvas.GAME_A; // L
+				case NOKIAKB_NUM3:  return Canvas.GAME_B; // R
+				case NOKIAKB_NUM5:  return Canvas.FIRE;
+				case NOKIAKB_NUM2:  return Canvas.UP;
+				case NOKIAKB_NUM8:  return Canvas.DOWN;
+				case NOKIAKB_NUM4:  return Canvas.LEFT;
+				case NOKIAKB_NUM6:  return Canvas.RIGHT;
+				case NOKIAKB_NUM0:  return Canvas.KEY_NUM0;
+				case NOKIAKB_STAR:  return Canvas.KEY_STAR;
+				case NOKIAKB_POUND: return Canvas.KEY_POUND;
+			}
+		}
+		if (sagem) 
+		{
+			switch (keycode) 
+			{
+				case SAGEM_UP:    return Canvas.UP; // Up
+				case SAGEM_DOWN:  return Canvas.DOWN; // Down
+				case SAGEM_LEFT:  return Canvas.LEFT; // Left
+				case SAGEM_RIGHT: return Canvas.RIGHT; // Right
+				case SAGEM_SOFT3: return Canvas.FIRE; // Y
+			}
+		}
+		if (siemens) 
+		{
+			switch (keycode) 
+			{
+				case SIEMENS_UP:    return Canvas.UP; // Up
+				case SIEMENS_DOWN:  return Canvas.DOWN; // Down
+				case SIEMENS_LEFT:  return Canvas.LEFT; // Left
+				case SIEMENS_RIGHT: return Canvas.RIGHT; // Right
+				case SIEMENS_FIRE:  return Canvas.FIRE; // Y
+			}
+		}
+		if (sharp) 
+		{
+			switch (keycode) 
+			{
+				case SHARP_UP:    return Canvas.UP; // Up
+				case SHARP_DOWN:  return Canvas.DOWN; // Down
+				case SHARP_LEFT:  return Canvas.LEFT; // Left
+				case SHARP_RIGHT: return Canvas.RIGHT; // Right
+				case SHARP_FIRE:  return Canvas.FIRE; // Y
+			}
+		}
+		if (skt)
+		{
+			switch (keycode)
+			{
+				case Canvas.KEY_UP:    return Canvas.UP; // Up
+				case Canvas.KEY_DOWN:  return Canvas.DOWN; // Down
+				case Canvas.KEY_LEFT:  return Canvas.LEFT; // Left
+				case Canvas.KEY_RIGHT: return Canvas.RIGHT; // Right
+				case Canvas.KEY_FIRE:  return Canvas.FIRE; // Y
+			}
+		}
+
+		// J2ME Canvas standard keycodes, to match against any keys not covered above (Canvas does not handle left/right soft keys).
+		switch (keycode)
+		{
+			case NOKIA_UP:         return Canvas.UP;
+			case NOKIA_DOWN:       return Canvas.DOWN;
+			case NOKIA_LEFT:       return Canvas.LEFT;
+			case NOKIA_RIGHT:      return Canvas.RIGHT;
+			case Canvas.KEY_NUM2:  return Canvas.UP;
+			case Canvas.KEY_NUM8:  return Canvas.DOWN;
+			case Canvas.KEY_NUM4:  return Canvas.LEFT;
+			case Canvas.KEY_NUM6:  return Canvas.RIGHT;
+			case Canvas.KEY_NUM9:  return Canvas.GAME_D;
+			case Canvas.KEY_NUM7:  return Canvas.GAME_C;
+			case Canvas.KEY_NUM5:  return Canvas.FIRE;
+			case Canvas.KEY_NUM1:  return Canvas.GAME_A;
+			case Canvas.KEY_NUM3:  return Canvas.GAME_B;
+			case Canvas.KEY_NUM0:  return Canvas.KEY_NUM0;
+			case Canvas.KEY_STAR:  return Canvas.KEY_STAR;
+			case Canvas.KEY_POUND: return Canvas.KEY_POUND;
+			case NOKIA_SOFT3:      return Canvas.FIRE;
+		}
+
+		// If a matching key wasn't found, return 0;
+		return 0;
+	}
+
+	// The difference between this and getGameAction is that the num keys and arrow keys are separated here.
+	public static final int getCanvasAction(int keycode) 
+	{
+		// NOTE: Canvas doesn't support SOFT keys by default. Those cases are all returning NOKIA softkeys to abstract lcdui's menu navigation
+		if (kddi)
+		{
+			switch(keycode)
+			{
+				case KDDI_UP:    return Canvas.UP; // Up
+				case KDDI_DOWN:  return Canvas.DOWN; // Down
+				case KDDI_LEFT:  return Canvas.LEFT; // Left
+				case KDDI_RIGHT: return Canvas.RIGHT; // Right
+				case KDDI_FIRE:  return Canvas.FIRE; // Y
+				case KDDI_SOFT1: return Canvas.KEY_SOFT_LEFT; // Start   (gameAction is GAME_A, but we go with the special keys for CanvasAction)
+				case KDDI_SOFT2: return Canvas.KEY_SOFT_RIGHT; // Select (gameAction is GAME_B, but we go with the special keys for CanvasAction)
+			}
+		}
+		if (lg) 
+		{
+			switch (keycode) 
+			{
+				case LG_UP: return Canvas.UP; // Up
+				case LG_DOWN: return Canvas.DOWN; // Down
+				case LG_LEFT: return Canvas.LEFT; // Left
+				case LG_RIGHT: return Canvas.RIGHT; // Right
+				case LG_FIRE: return Canvas.FIRE; // Y
+				case LG_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case LG_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (motorola) 
+		{
+			switch (keycode) 
+			{
+				case MOTOROLA_UP: return Canvas.UP; // Up
+				case MOTOROLA_DOWN: return Canvas.DOWN; // Down
+				case MOTOROLA_LEFT: return Canvas.LEFT; // Left
+				case MOTOROLA_RIGHT: return Canvas.RIGHT; // Right
+				case MOTOROLA_FIRE: return Canvas.FIRE; // Y
+				case MOTOROLA_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case MOTOROLA_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (motoTriplets) 
+		{
+			switch (keycode) 
+			{
+				case TRIPLETS_UP: return Canvas.UP; // Up
+				case TRIPLETS_DOWN: return Canvas.DOWN; // Down
+				case TRIPLETS_LEFT: return Canvas.LEFT; // Left
+				case TRIPLETS_RIGHT: return Canvas.RIGHT; // Right
+				case TRIPLETS_FIRE: return Canvas.FIRE; // Y
+				case TRIPLETS_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case TRIPLETS_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (motoV8) 
+		{
+			switch (keycode) 
+			{
+				case MOTOV8_UP: return Canvas.UP; // Up
+				case MOTOV8_DOWN: return Canvas.DOWN; // Down
+				case MOTOV8_LEFT: return Canvas.LEFT; // Left
+				case MOTOV8_RIGHT: return Canvas.RIGHT; // Right
+				case MOTOV8_FIRE: return Canvas.FIRE; // Y
+				case MOTOV8_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case MOTOV8_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (motoA1000) 
+		{
+			switch (keycode) 
+			{
+				case A1000_UP: return Canvas.UP; // Up
+				case A1000_DOWN: return Canvas.DOWN; // Down
+				case A1000_LEFT: return Canvas.LEFT; // Left
+				case A1000_RIGHT: return Canvas.RIGHT; // Right
+				case A1000_FIRE: return Canvas.FIRE; // Y
+				case A1000_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case A1000_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (nokiaKeyboard) 
+		{
+			switch (keycode) 
+			{
+				case NOKIAKB_UP:    return Canvas.UP; // Up
+				case NOKIAKB_DOWN:  return Canvas.DOWN; // Down
+				case NOKIAKB_LEFT:  return Canvas.LEFT; // Left
+				case NOKIAKB_RIGHT: return Canvas.RIGHT; // Right
+				case NOKIAKB_NUM9:  return Canvas.KEY_NUM9; // A
+				case NOKIAKB_NUM7:  return Canvas.KEY_NUM7; // B
+				case NOKIAKB_SOFT3: return Canvas.FIRE; // Y
+				case NOKIAKB_NUM1:  return Canvas.KEY_NUM1; // L
+				case NOKIAKB_NUM3:  return Canvas.KEY_NUM3; // R
+				case NOKIAKB_NUM5:  return Canvas.KEY_NUM5;
+				case NOKIAKB_NUM2:  return Canvas.KEY_NUM2;
+				case NOKIAKB_NUM8:  return Canvas.KEY_NUM8;
+				case NOKIAKB_NUM4:  return Canvas.KEY_NUM4;
+				case NOKIAKB_NUM6:  return Canvas.KEY_NUM6;
+				case NOKIAKB_NUM0:  return Canvas.KEY_NUM0;
+				case NOKIAKB_STAR:  return Canvas.KEY_STAR;
+				case NOKIAKB_POUND: return Canvas.KEY_POUND;
+				case NOKIAKB_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case NOKIAKB_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (sagem) 
+		{
+			switch (keycode) 
+			{
+				case SAGEM_UP:    return Canvas.UP; // Up
+				case SAGEM_DOWN:  return Canvas.DOWN; // Down
+				case SAGEM_LEFT:  return Canvas.LEFT; // Left
+				case SAGEM_RIGHT: return Canvas.RIGHT; // Right
+				case SAGEM_SOFT3: return Canvas.FIRE; // Y
+				case SAGEM_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case SAGEM_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (siemens) 
+		{
+			switch (keycode) 
+			{
+				case SIEMENS_UP:    return Canvas.UP; // Up
+				case SIEMENS_DOWN:  return Canvas.DOWN; // Down
+				case SIEMENS_LEFT:  return Canvas.LEFT; // Left
+				case SIEMENS_RIGHT: return Canvas.RIGHT; // Right
+				case SIEMENS_FIRE:  return Canvas.FIRE; // Y
+				case SIEMENS_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case SIEMENS_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (sharp) 
+		{
+			switch (keycode) 
+			{
+				case SHARP_UP:    return Canvas.UP; // Up
+				case SHARP_DOWN:  return Canvas.DOWN; // Down
+				case SHARP_LEFT:  return Canvas.LEFT; // Left
+				case SHARP_RIGHT: return Canvas.RIGHT; // Right
+				case SHARP_FIRE:  return Canvas.FIRE; // Y
+				case SHARP_SOFT1: return Canvas.KEY_SOFT_LEFT;
+				case SHARP_SOFT2: return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		if (skt)
+		{
+			switch (keycode)
+			{
+				case Canvas.KEY_UP:    return Canvas.UP; // Up
+				case Canvas.KEY_DOWN:  return Canvas.DOWN; // Down
+				case Canvas.KEY_LEFT:  return Canvas.LEFT; // Left
+				case Canvas.KEY_RIGHT: return Canvas.RIGHT; // Right
+				case Canvas.KEY_FIRE:  return Canvas.FIRE; // Y
+				case Canvas.KEY_COML:  return Canvas.KEY_SOFT_LEFT;
+				case Canvas.KEY_COMR:  return Canvas.KEY_SOFT_RIGHT;
+			}
+		}
+		
+		// J2ME Canvas standard keycodes, to match against any keys not covered above (Canvas does not handle left/right soft keys).
+		switch (keycode)
+		{
+			case NOKIA_UP:         return Canvas.UP;
+			case NOKIA_DOWN:       return Canvas.DOWN;
+			case NOKIA_LEFT:       return Canvas.LEFT;
+			case NOKIA_RIGHT:      return Canvas.RIGHT;
+			case Canvas.KEY_NUM2:  return Canvas.KEY_NUM2;
+			case Canvas.KEY_NUM8:  return Canvas.KEY_NUM8;
+			case Canvas.KEY_NUM4:  return Canvas.KEY_NUM4;
+			case Canvas.KEY_NUM6:  return Canvas.KEY_NUM6;
+			case Canvas.KEY_NUM9:  return Canvas.KEY_NUM9;
+			case Canvas.KEY_NUM7:  return Canvas.KEY_NUM7;
+			case Canvas.KEY_NUM5:  return Canvas.KEY_NUM5;
+			case Canvas.KEY_NUM1:  return Canvas.KEY_NUM1;
+			case Canvas.KEY_NUM3:  return Canvas.KEY_NUM3;
+			case Canvas.KEY_NUM0:  return Canvas.KEY_NUM0;
+			case Canvas.KEY_STAR:  return Canvas.KEY_STAR;
+			case Canvas.KEY_POUND: return Canvas.KEY_POUND;
+			case NOKIA_SOFT3:      return Canvas.FIRE;
+			case NOKIA_SOFT1:      return Canvas.KEY_SOFT_LEFT;
+			case NOKIA_SOFT2:      return Canvas.KEY_SOFT_RIGHT;
+		}
+
+		// If a matching key wasn't found, return 0;
+		return 0;
+	}
+
+	public static final void log(final byte logLevel, final String text) 
+	{
+		if(logLevel == 0 || logLevel < minLogLevel || MobilePlatform.appTerminated) { return; }
+
+		synchronized (pendingLogs) 
+		{ 
+			pendingLogs.add(new Runnable() 
+			{
+				@Override
+				public void run() 
+				{ 
+					String logText = "";
+					switch(logLevel) 
+					{
+						case LOG_DEBUG:
+							logText = new String("[DEBUG] " + text);
+							break;
+						case LOG_INFO:
+							logText = new String("[INFO] " + text);
+							break;
+						case LOG_WARNING:
+							logText = new String("[WARNING] " + text);
+							break;
+						case LOG_ERROR:
+							logText = new String("[ERROR] " + text);
+							break;
+						case LOG_FATAL:
+							logText = new String("[FATAL] " + text);
+							break;
+					}
+
+					// Log to console only if not libretro, as it won't be seen there anyway
+					if(!MobilePlatform.isLibretro) { System.out.println(logText); }
+					
+					try
+					{
+						logWriter.write(logText);
+						logWriter.newLine();
+						logWriter.flush();
+					} catch (IOException e) { System.out.println("Couldn't write to log file: " + e.getMessage()); e.printStackTrace(); }
+				}
+			}); 
+			pendingLogs.notify();
+		}
+	}
+
+	/* Clears old log file at boot. */
+	public static final void clearOldLog() 
+	{
+		logFile = new File(getLogFilePath());
+        if (logFile.exists()) { logFile.delete(); }
+		// Create system dir if not available yet and try writing to the log file
+		logFile.getParentFile().mkdirs();
+		try { logWriter = new BufferedWriter(new FileWriter(logFile, true)); } // This one doesn't need to be closed, it dies with FreeJ2ME-Plus
+		catch(IOException e) { System.out.println("Failed to preparate file writer: " + e.getMessage()); e.printStackTrace(); }
+
+		new Thread(new Runnable() 
+		{
+			@Override
+			public void run() { processLogs(); }
+		}, "Logging-Thread").start();
+	}
+
+	private static final void processLogs() 
+	{
+		Runnable call = null;
+		while(true) 
+		{
+			synchronized (pendingLogs) 
+			{
+				while(pendingLogs.isEmpty()) // If we have no serial events to process, and no current displayable change, wait.
+				{
+					try { pendingLogs.wait(); }
+					catch (Exception e) { }
+				}
+
+				call = pendingLogs.poll(); 
+				if(call != null) { call.run(); }
+			}
+		}
+	}
+
+	public static boolean updateSettings() 
+	{
+		// Start with system settings
+		minLogLevel = (byte) Integer.parseInt(config.sysSettings.get("logLevel"));
+		
+		String showFPS = config.sysSettings.get("fpsCounterPosition");
+		platform.setShowFPS(showFPS);
+
+		M3GRenderUntexturedPolygons = config.sysSettings.get("M3GUntextured").equals("on");
+
+		M3GRenderWireframe = config.sysSettings.get("M3GWireframe").equals("on");
+
+		MCV3ShowHeapUsage = config.sysSettings.get("MCV3ShowHeapUsage").equals("on");
+
+		MCV3ShowTimeMetrics = config.sysSettings.get("MCV3ShowTimeMetrics").equals("on");
+
+		deleteTemporaryKJXFiles = config.sysSettings.get("deleteTempKJXFiles").equals("on");
+
+		dumpAudioStreams = config.sysSettings.get("dumpAudioStreams").equals("on");
+
+		dumpGraphicsObjects = config.sysSettings.get("dumpGraphicsObjects").equals("on");
+
+		String soundEnabled = config.sysSettings.get("sound");
+		sound = false;
+		if(soundEnabled.equals("on")) { sound = true; }
+
+		String midiSoundfont = config.sysSettings.get("soundfont");
+		if(midiSoundfont.equals("Custom") && useCustomMidi == false)      { useCustomMidi = true;  Manager.changeCustomMidi(); }
+		else if(midiSoundfont.equals("Default") && useCustomMidi == true) { useCustomMidi = false; Manager.changeCustomMidi(); }
+
+		String textFont = config.sysSettings.get("textfont");
+		if(textFont.equals("Custom"))       { useCustomTextFont = true; }
+		else if(textFont.equals("Default")) { useCustomTextFont = false; }
+
+		// Then move on to per-app settings
+		lcdWidth = Integer.parseInt(config.settings.get("scrwidth"));
+		lcdHeight = Integer.parseInt(config.settings.get("scrheight"));
+
+		limitFPS = Integer.parseInt(config.settings.get("fps"));
+
+		String phone = config.settings.get("phone");
+		kddi = false;
+		lg = false;
+		motorola = false;
+		motoTriplets = false;
+		motoV8 = false;
+		motoA1000 = false;
+		nokiaKeyboard = false;
+		sagem = false;
+		siemens = false;
+		sharp = false;
+		skt = false;
+		if(phone.equals("KDDI"))          { kddi = true;}
+		if(phone.equals("LG"))            { lg = true;}
+		if(phone.equals("Motorola"))      { motorola = true;}
+		if(phone.equals("MotoTriplets"))  { motoTriplets = true;}
+		if(phone.equals("MotoV8"))        { motoV8 = true;}
+		if(phone.equals("MotoA1000"))     { motoA1000 = true;}
+		if(phone.equals("NokiaKeyboard")) { nokiaKeyboard = true;}
+		if(phone.equals("Sagem"))         { sagem = true;}
+		if(phone.equals("Siemens"))       { siemens = true;}
+		if(phone.equals("Sharp"))         { sharp = true;}
+		if(phone.equals("SKT"))           { skt = true;}
+
+		String lcdBacklightColor = config.settings.get("backlightcolor");
+		if(lcdBacklightColor.equals("Disabled"))    { maskIndex = 0; }
+		else if(lcdBacklightColor.equals("Green"))  { maskIndex = 1; }
+		else if(lcdBacklightColor.equals("Cyan"))   { maskIndex = 2; }
+		else if(lcdBacklightColor.equals("Orange")) { maskIndex = 3; }
+		else if(lcdBacklightColor.equals("Violet")) { maskIndex = 4; }
+		else if(lcdBacklightColor.equals("Red"))    { maskIndex = 5; }
+
+		String dojaString = config.settings.get("dojaversion");
+		DoJaVersion = Integer.parseInt(dojaString);
+
+		// Speedhacks
+		String speedHackNoAlpha = config.settings.get("spdhacknoalpha");
+		if(speedHackNoAlpha.equals("on"))        { noAlphaOnBlankImages = true; }
+		else if (speedHackNoAlpha.equals("off")) { noAlphaOnBlankImages = false; };
+
+		String speedHackM3GHalfRes = config.settings.get("spdhackm3ghalfres");
+		if(speedHackM3GHalfRes.equals("on"))        { halfResM3GRaster = true; }
+		else if (speedHackM3GHalfRes.equals("off")) { halfResM3GRaster = false; };
+
+		String speedHackMCV3HalfRes = config.settings.get("spdhackmcv3halfres");
+		if(speedHackMCV3HalfRes.equals("on"))        { halfResMCV3Raster = true; }
+		else if (speedHackMCV3HalfRes.equals("off")) { halfResMCV3Raster = false; };
+
+		String speedHackMCV3NoLighting = config.settings.get("spdhackmcv3nolighting");
+		if(speedHackMCV3NoLighting.equals("on"))        { MCV3NoLighting = true; }
+		else if (speedHackMCV3NoLighting.equals("off")) { MCV3NoLighting = false; };
+
+		// Compatibility settings (this will probably expand in the future)
+		String fantasyZoneFix = config.settings.get("compatfantasyzonefix");
+		if(fantasyZoneFix.equals("on"))        { compatFantasyZoneFix = true; }
+		else if (fantasyZoneFix.equals("off")) { compatFantasyZoneFix = false; };
+
+		String translateToOriginOnReset = config.settings.get("compattranstooriginonreset");
+		if(translateToOriginOnReset.equals("on"))        { compatTranslateToOriginOnReset = true; }
+		else if (translateToOriginOnReset.equals("off")) { compatTranslateToOriginOnReset = false; };
+
+		String immediateRepaints = config.settings.get("compatimmediaterepaints");
+		if(immediateRepaints.equals("on"))        { compatImmediateRepaints = true; }
+		else if (immediateRepaints.equals("off")) { compatImmediateRepaints = false; };
+
+		String overridePlatChecks = config.settings.get("compatoverrideplatchecks");
+		if(overridePlatChecks.equals("on"))        { compatOverridePlatformChecks = true; }
+		else if (overridePlatChecks.equals("off")) { compatOverridePlatformChecks = false; };
+
+		String siemensFriendlyDrawing = config.settings.get("compatsiemensfriendlydrawing");
+		if(siemensFriendlyDrawing.equals("on"))        { compatSiemensFriendlyDrawing = true; }
+		else if (siemensFriendlyDrawing.equals("off")) { compatSiemensFriendlyDrawing = false; };
+
+		String ignoreVolumeChanges = config.settings.get("compatignorevolumechanges");
+		if(ignoreVolumeChanges.equals("on"))        { compatIgnoreVolumeChanges = true; }
+		else if (ignoreVolumeChanges.equals("off")) { compatIgnoreVolumeChanges = false; };
+
+		String MCV3HorizFovFix = config.settings.get("compatmcv3horizfovfix");
+		if(MCV3HorizFovFix.equals("on"))        { compatMCV3HorizontalFovFix = true; }
+		else if (MCV3HorizFovFix.equals("off")) { compatMCV3HorizontalFovFix = false; };
+
+		// Other settings
+		String fontOffset = config.settings.get("fontoffset");
+		fontSizeOffset = (byte) Integer.parseInt(fontOffset);
+
+		org.recompile.mobile.PlatformFont.updateDefaultFont();
+
+		String fpsHackSetting = config.settings.get("fpshack");
+		if(fpsHackSetting.equals("Disabled"))        { unlockFramerateHack = 0; }
+		else if(fpsHackSetting.equals("Safe"))       { unlockFramerateHack = 1; }
+		else if(fpsHackSetting.equals("Extended"))   { unlockFramerateHack = 2; }
+		else if(fpsHackSetting.equals("Aggressive")) { unlockFramerateHack = 3; }
+
+		// Rotation is left at the end since it governs this method's return value
+		String rotate = config.settings.get("rotate");
+
+		// Compat for older rotation scheme
+		if(rotate.equals("on"))  { rotate = "270"; }
+		if(rotate.equals("off")) { rotate = "0"; }
+
+		if(Integer.parseInt(rotate) != rotateDisplay) 
+		{
+			rotateDisplay = Integer.parseInt(rotate);
+			return true;
+		}
+		// If no rotation has to be done, return false
+		return false;
+	}
+
+	public static void restartApp() 
+	{
+		if(isManagedSession)
+		{			libretroRestartRequested = 1;
+			if(textEncoding.equals("ISO_8859_1"))         { libretroEncodingRequested = 0; }
+			else if(textEncoding.equals("Shift_JIS"))     { libretroEncodingRequested = 1; }
+			else if(textEncoding.equals("EUC_KR"))        { libretroEncodingRequested = 2; }
+			return;
+		}
+		try 
+		{
+			String java = System.getProperty("java.home") + "/bin/java";
+			String classPath = System.getProperty("java.class.path");
+
+			// Get the main class name
+			String mainClass = getMainClassFromJar("file:" + classPath);
+
+			String jarPath = null;
+			
+			if(MobilePlatform.fileName != null) 
+			{ 	
+				File jarFile = new File(platform.fileName.replace("file:", "").trim());
+				jarPath = jarFile.getCanonicalPath(); 
+			}
+			
+			if(!MobilePlatform.isLibretro)
+			{
+				String[] commands = new String[] { java, "-jar", "-Dfile.encoding="+textEncoding, classPath, jarPath};
+
+				ProcessBuilder processBuilder = null;
+
+				if(jarPath != null) { processBuilder = new ProcessBuilder(new String[] { java, "-jar", "-Dfile.encoding="+textEncoding, classPath, jarPath}); }
+				else { processBuilder = new ProcessBuilder(new String[] { java, "-jar", "-Dfile.encoding="+textEncoding, classPath}); }
+				
+				processBuilder.start();
+
+				System.exit(0);
+			}
+			else // Libretro governs loading the process up again and not the jar, so post a request for it to do so
+			{
+				libretroRestartRequested = 1;
+				if(textEncoding.equals("ISO_8859_1"))         { libretroEncodingRequested = 0; }
+				else if(textEncoding.equals("Shift_JIS"))     { libretroEncodingRequested = 1; }
+				else if(textEncoding.equals("EUC_KR"))        { libretroEncodingRequested = 2; }
+				// TODO: Support other encodings
+			}
+		}
+		catch(Exception e) { log(Mobile.LOG_INFO, Mobile.class.getPackage().getName() + "." + Mobile.class.getSimpleName() + ": " + "Failed to restart FreeJ2ME: " + e.getMessage()); e.printStackTrace(); }
+	}
+
+	private static String getMainClassFromJar(String classPath) 
+	{
+        try 
+		{
+            URL jarUrl = new URL(classPath);
+			
+			JarFile jarFile = new JarFile(jarUrl.getFile());
+			Manifest manifest = jarFile.getManifest();
+			Attributes attributes = manifest.getMainAttributes();
+			return attributes.getValue("Main-Class");
+        } 
+		catch (Exception e) { return null; } // This normally shouldn't fail
+    }
+}
