@@ -91,7 +91,7 @@ public class MobilePlatform
 		// Check whether we're using any of the valid encodings before starting the jar, otherwise we'll be defaulting to ISO_8859_1
 		for (String encoding : Mobile.supportedEncodings) 
 		{
-			if (encoding.equals(System.getProperty("file.encoding"))) { isUsingValidEncoding = true; }
+			if (encoding.equals(Mobile.getSessionProperty("file.encoding"))) { isUsingValidEncoding = true; }
 		}
 
 		if(!isUsingValidEncoding) 
@@ -863,7 +863,7 @@ public class MobilePlatform
 	{
 		if(!Mobile.getSessionProperty("file.encoding").equals(Mobile.textEncoding))
 		{
-			Mobile.log(Mobile.LOG_INFO, MobilePlatform.class.getPackage().getName() + "." + MobilePlatform.class.getSimpleName() + ": " + "different encoding: " + System.getProperty("file.encoding") + " while it should be " + Mobile.textEncoding + ". Restarting freeJ2ME to apply new encoding");
+			Mobile.log(Mobile.LOG_INFO, MobilePlatform.class.getPackage().getName() + "." + MobilePlatform.class.getSimpleName() + ": " + "different encoding: " + Mobile.getSessionProperty("file.encoding") + " while it should be " + Mobile.textEncoding + ". Restarting freeJ2ME to apply new encoding");
 			Mobile.restartApp();
 		}
 	}

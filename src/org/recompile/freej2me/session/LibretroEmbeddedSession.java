@@ -29,6 +29,7 @@ public final class LibretroEmbeddedSession
 	private Thread thread;
 	private volatile boolean running = false;
 	private ClassLoader customLoader;
+	private java.util.Map<String, String> sessionProperties;
 
 	public LibretroEmbeddedSession(String sessionId)
 	{
@@ -60,6 +61,7 @@ public final class LibretroEmbeddedSession
 	}
 
 	public void setDataDir(String dir) { this.dataDir = dir; }
+	public void setSessionProperties(java.util.Map<String, String> props) { this.sessionProperties = props; }
 
 	public void start(final String[] args)
 	{
@@ -87,6 +89,13 @@ public final class LibretroEmbeddedSession
 					{
 						Class<?> mobileClass = Class.forName("org.recompile.mobile.Mobile", true, loader);
 						mobileClass.getMethod("initSessionProperties").invoke(null);
+						if(sessionProperties != null)
+						{
+							for(java.util.Map.Entry<String, String> e : sessionProperties.entrySet())
+							{
+								mobileClass.getMethod("setSessionProperty", String.class, String.class).invoke(null, e.getKey(), e.getValue());
+							}
+						}
 						mobileClass.getField("isManagedSession").setBoolean(null, true);
 						Class<?> libretroClass = Class.forName("org.recompile.freej2me.Libretro", true, loader);
 						Constructor<?> ctor = libretroClass.getConstructor(String[].class, InputSource.class, FrameSink.class, AudioSink.class);
@@ -95,6 +104,13 @@ public final class LibretroEmbeddedSession
 					else
 					{
 						org.recompile.mobile.Mobile.initSessionProperties();
+						if(sessionProperties != null)
+						{
+							for(java.util.Map.Entry<String, String> e : sessionProperties.entrySet())
+							{
+								org.recompile.mobile.Mobile.setSessionProperty(e.getKey(), e.getValue());
+							}
+						}
 						new Libretro(args, input, frames, audio);
 					}
 				}

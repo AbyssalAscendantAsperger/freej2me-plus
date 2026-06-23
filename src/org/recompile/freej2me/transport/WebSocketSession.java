@@ -207,9 +207,48 @@ public class WebSocketSession implements Runnable
 				System.err.println("WebSocketSession: no 'jar' in config");
 				return false;
 			}
-			sessionId = "ws-" + socket.getInetAddress().getHostAddress() + "-" + socket.getPort() + "-" + System.currentTimeMillis();
-			String dataDir = "data/" + sessionId;
-			manager.createSession(sessionId, dataDir, args);
+
+			String requestedSessionId = cfg.get("sessionId");
+			if(requestedSessionId != null) { requestedSessionId = requestedSessionId.trim(); }
+			if(requestedSessionId == null || requestedSessionId.isEmpty())
+			{
+				sessionId = "ws-" + socket.getInetAddress().getHostAddress() + "-" + socket.getPort() + "-" + System.currentTimeMillis();
+			}
+			else
+			{
+				sessionId = sanitizePathSegment(requestedSessionId);
+				if(sessionId.isEmpty())
+				{
+					System.err.println("WebSocketSession: invalid 'sessionId' in config");
+					return false;
+				}
+			}
+
+			String dataDir = cfg.get("dataDir");
+			if(dataDir != null) { dataDir = dataDir.trim(); }
+			if(dataDir == null || dataDir.isEmpty())
+			{
+				dataDir = "data/" + sessionId;
+			}
+
+			java.util.Map<String, String> sessionProperties = new java.util.HashMap<String, String>();
+			String encoding = cfg.get("encoding");
+			if(encoding != null)
+			{
+				encoding = encoding.trim();
+				if(!encoding.isEmpty())
+				{
+					sessionProperties.put("file.encoding", encoding);
+					sessionProperties.put("microedition.encoding", encoding);
+				}
+			}
+
+			String created = manager.createSession(sessionId, dataDir, args, sessionProperties);
+			if(created == null)
+			{
+				System.err.println("WebSocketSession: failed to create session '" + sessionId + "'");
+				return false;
+			}
 			// Send load jar command
 			manager.sendRaw(sessionId, buildLoadJarCommand(jar));
 			// Start writer thread now that we have a session
@@ -222,6 +261,21 @@ public class WebSocketSession implements Runnable
 			e.printStackTrace();
 			return false;
 		}
+	}
+
+	private String sanitizePathSegment(String text)
+	{
+		if(text == null) { return ""; }
+		StringBuilder sb = new StringBuilder();
+		for(int i = 0; i < text.length(); i++)
+		{
+			char c = text.charAt(i);
+			if((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')
+			{
+				sb.append(c);
+			}
+		}
+		return sb.toString();
 	}
 
 	private byte[] buildLoadJarCommand(String jar)

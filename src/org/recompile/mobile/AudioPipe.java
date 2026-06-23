@@ -20,7 +20,7 @@ public final class AudioPipe
 	private static AudioFormat currentFormat;
 	private static boolean announced = false;
 
-	private static final ThreadLocal<org.recompile.freej2me.session.AudioSink> threadSink = new ThreadLocal<org.recompile.freej2me.session.AudioSink>();
+	private static final InheritableThreadLocal<org.recompile.freej2me.session.AudioSink> threadSink = new InheritableThreadLocal<org.recompile.freej2me.session.AudioSink>();
 	private static volatile org.recompile.freej2me.session.AudioSink globalSink;
 
 	private AudioPipe() { }

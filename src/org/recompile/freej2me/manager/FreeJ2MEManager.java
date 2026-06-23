@@ -38,6 +38,11 @@ public class FreeJ2MEManager
 	*/
 	public String createSession(String sessionId, String dataDir, String[] args)
 	{
+		return createSession(sessionId, dataDir, args, null);
+	}
+
+	public String createSession(String sessionId, String dataDir, String[] args, Map<String, String> sessionProperties)
+	{
 		if(sessions.containsKey(sessionId)) { return null; }
 		try
 		{
@@ -70,6 +75,12 @@ public class FreeJ2MEManager
 			// Set per-session data directory
 			Method setDataDir = sessionClass.getMethod("setDataDir", String.class);
 			setDataDir.invoke(session, dataDir);
+
+			if(sessionProperties != null)
+			{
+				Method setSessionProperties = sessionClass.getMethod("setSessionProperties", Map.class);
+				setSessionProperties.invoke(session, sessionProperties);
+			}
 
 			// Start with the child loader as context
 			Method start = sessionClass.getMethod("start", String[].class, ClassLoader.class);
