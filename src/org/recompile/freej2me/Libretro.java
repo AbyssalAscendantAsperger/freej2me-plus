@@ -19,11 +19,16 @@ package org.recompile.freej2me;
 import org.recompile.mobile.Mobile;
 import org.recompile.mobile.MobilePlatform;
 import org.recompile.mobile.AudioPipe;
+import org.recompile.freej2me.session.FrameSink;
+import org.recompile.freej2me.session.InputSource;
+import org.recompile.freej2me.session.StreamFrameSink;
+import org.recompile.freej2me.session.StreamInputSource;
 
 import java.util.Timer;
 import java.util.TimerTask;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URLDecoder;
 
 public class Libretro
@@ -33,10 +38,10 @@ public class Libretro
 	int[] lcdData;
 
 	private boolean soundEnabled = true;
-	private static volatile boolean canPause = false;
+	private volatile boolean canPause = false;
 
 	private static final long PAUSE_DELAY_MS = 250;
-	private static volatile long lastCoreUpdateTime = System.currentTimeMillis(); // Tracks last core update for pause checks
+	private volatile long lastCoreUpdateTime = System.currentTimeMillis(); // Tracks last core update for pause checks
 
 	private byte[] frameBuffer = new byte[800*800*3];
 	private final byte[] frameHeader = new byte[]{(byte)0xFE,
@@ -57,6 +62,9 @@ public class Libretro
 
 	LibretroIO lio;
 
+	private final InputSource input;
+	private final FrameSink frameSink;
+
 	public static void main(String args[])
 	{
 		Mobile.clearOldLog();
@@ -65,6 +73,15 @@ public class Libretro
 
 	public Libretro(String args[])
 	{
+		this(args, new StreamInputSource(System.in), new StreamFrameSink(System.out));
+	}
+
+	public Libretro(String args[], InputSource input, FrameSink frameSink)
+	{
+		if(input == null) { throw new NullPointerException("InputSource cannot be null"); }
+		if(frameSink == null) { throw new NullPointerException("FrameSink cannot be null"); }
+		this.input = input;
+		this.frameSink = frameSink;
 		lcdWidth  = Mobile.lcdWidth;
 		lcdHeight = Mobile.lcdHeight;
 
@@ -207,8 +224,8 @@ public class Libretro
 
 		lio.start();
 		
-		System.out.println("+READY");
-		System.out.flush();
+		try { frameSink.ready(); }
+		catch(IOException e) { throw new RuntimeException("Could not notify frontend readiness", e); }
 
 		if(AudioPipe.enabled()) { AudioPipe.playTone(69, 120, 25); }
 	}
@@ -239,7 +256,7 @@ public class Libretro
 				{
 					while(true)
 					{
-						bin = System.in.read(); // Blocks until there's data available
+						bin = input.read(); // Blocks until there's data available
 						if(bin==-1) { return; }
 
 						//System.out.print(" "+bin);
@@ -341,7 +358,7 @@ public class Libretro
 
 								case 10: // load jar
 									buffer = new byte[code];
-									bytesRead = System.in.read(buffer);
+									bytesRead = input.read(buffer);
 
 									path = new String(buffer, 0, bytesRead);
 
@@ -427,10 +444,7 @@ public class Libretro
 											frameHeader[14] = Mobile.libretroRestartRequested;
 											frameHeader[15] = Mobile.libretroEncodingRequested;
 
-											System.out.write(frameHeader, 0, 16);
-
-											System.out.write(frameBuffer, 0, lcdData.length*3);
-											System.out.flush();
+											frameSink.sendFrame(frameHeader, 0, 16, frameBuffer, 0, lcdData.length*3);
 											Thread.sleep(Integer.MAX_VALUE); // Wait for as long as possible until the libretro core kills this
 										}
 
@@ -449,7 +463,7 @@ public class Libretro
 
 								case 11: // set save path //
 									buffer = new byte[code];
-									bytesRead = System.in.read(buffer);
+									bytesRead = input.read(buffer);
 
 									Mobile.getPlatform().dataPath = new String(buffer, 0, bytesRead);
 								break;
@@ -457,7 +471,7 @@ public class Libretro
 								case 13:
 									/* Received updated settings from libretro core */
 									buffer = new byte[code];
-									bytesRead = System.in.read(buffer);
+									bytesRead = input.read(buffer);
 									
 									String cfgvars = new String(buffer, 0, bytesRead);
 									/* Tokens: [0]="FJ2ME_LR_OPTS:", [1]=width, [2]=height, [3]=rotate, [4]=phone, [5]=fps, ... */
@@ -605,8 +619,6 @@ public class Libretro
 										frameHeader[14] = Mobile.libretroRestartRequested;
 										frameHeader[15] = Mobile.libretroEncodingRequested;
 
-										System.out.write(frameHeader, 0, 16);
-
 										/* Vibration duration should be set to zero to prevent constant sends of the same data, so update it here */
 										Mobile.vibrationDuration = 0;
 
@@ -618,8 +630,7 @@ public class Libretro
 											frameBuffer[3*i+2] = (byte)((lcdData[i])&0xFF);
 										}
 
-										System.out.write(frameBuffer, 0, lcdData.length*3);
-										System.out.flush();
+										frameSink.sendFrame(frameHeader, 0, 16, frameBuffer, 0, lcdData.length*3);
 									}
 									catch (Exception e)
 									{
@@ -638,7 +649,7 @@ public class Libretro
 		} // timer
 	} // LibretroIO
 
-	private static void updatePauseTimer() 
+	private void updatePauseTimer() 
 	{
 		if(!canPause) { return; } // Only start counting this after libretro has finished processing the last sent frame
 		long currentTime = System.currentTimeMillis();

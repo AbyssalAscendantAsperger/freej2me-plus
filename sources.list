@@ -1105,6 +1105,16 @@ src/org/recompile/freej2me/ScreenShot.java
 src/org/recompile/freej2me/imageio/LbmHeaderData.java
 src/org/recompile/freej2me/imageio/LbmReader.java
 src/org/recompile/freej2me/imageio/LbmReaderSpi.java
+src/org/recompile/freej2me/session/InputSource.java
+src/org/recompile/freej2me/session/StreamInputSource.java
+src/org/recompile/freej2me/session/QueueInputSource.java
+src/org/recompile/freej2me/session/FrameSink.java
+src/org/recompile/freej2me/session/StreamFrameSink.java
+src/org/recompile/freej2me/session/FramePacket.java
+src/org/recompile/freej2me/session/QueueFrameSink.java
+src/org/recompile/freej2me/session/LibretroEmbeddedSession.java
+src/org/recompile/mobile/AudioPipe.java
+src/org/recompile/mobile/AudioPipeMidi.java
 src/org/recompile/mobile/Base64Util.java
 src/org/recompile/mobile/JavaxPlatformPlayer.java
 src/org/recompile/mobile/MIDletEnhancements.java
@@ -1116,8 +1126,6 @@ src/org/recompile/mobile/PlatformGraphics.java
 src/org/recompile/mobile/PlatformImage.java
 src/org/recompile/mobile/PlatformPlayer.java
 src/org/recompile/mobile/SiemensPlatformPlayer.java
-src/org/recompile/mobile/AudioPipe.java
-src/org/recompile/mobile/AudioPipeMidi.java
 src/org/w3c/dom/Attr.java
 src/org/w3c/dom/CDATASection.java
 src/org/w3c/dom/CharacterData.java
