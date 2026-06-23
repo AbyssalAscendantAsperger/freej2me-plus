@@ -3,6 +3,7 @@ package org.recompile.freej2me.transport;
 import java.io.*;
 import java.net.*;
 import java.security.MessageDigest;
+import java.util.Map;
 
 import org.recompile.freej2me.manager.FreeJ2MEManager;
 import org.recompile.freej2me.session.AudioPacket;
@@ -11,10 +12,26 @@ import org.recompile.mobile.Base64Util;
 
 /*
 	Lightweight WebSocket session per socket.
-	Each accepted socket becomes one FreeJ2ME session.
-	Protocol:
-	  Client -> Server : raw binary libretro 5-byte commands (keys, touch, etc.)
-	  Server -> Client : binary frames carrying FE/FJ2A packets (frame/audio)
+	Handshake flow:
+	  1. HTTP Upgrade handshake
+	  2. Client sends first TEXT frame with JSON config:
+	       {"width":240,"height":320,"phone":0,"rotate":0,"fps":30,
+	        "sound":1,"midi":0,"dumpAudio":0,"logLevel":2,
+	        "noAlpha":1,"backlight":1,"fantasyZone":0,
+	        "transToOrigin":0,"immediateRepaints":0,
+	        "overridePlatform":1,"siemensFriendly":0,
+	        "fontOffset":0,"dumpGraphics":0,"deleteKJX":1,
+	        "M3GUntextured":0,"M3GWireframe":0,
+	        "fpsHack":0,"textFont":0,"fontOffset2":0,
+	        "M3GHalfRes":0,"DoJaVersion":200,
+	        "ignoreVolume":0,"MCV3HalfRes":0,
+	        "MCV3NoLight":0,"MCV3HFOV":0,
+	        "MCV3Heap":0,"MCV3Time":0,
+	        "jar":"game.jar"}
+	  3. Server creates FreeJ2ME session from config
+	  4. Bidirectional binary frame mode begins
+	     Client -> binary libretro commands (keys, pointer, frame request)
+	     Server -> binary frame (FE header + RGB) or audio (FJ2A)
 */
 public class WebSocketSession implements Runnable
 {
@@ -25,6 +42,7 @@ public class WebSocketSession implements Runnable
 	private DataInputStream in;
 	private DataOutputStream out;
 	private Thread readThread, writeThread;
+	private boolean configured = false;
 
 	public WebSocketSession(Socket socket, FreeJ2MEManager manager)
 	{
@@ -41,12 +59,8 @@ public class WebSocketSession implements Runnable
 			try { socket.close(); } catch(IOException e) { }
 			return;
 		}
-		sessionId = "ws-" + socket.getInetAddress().getHostAddress() + "-" + socket.getPort() + "-" + System.currentTimeMillis();
-		manager.createSession(sessionId, "data/" + sessionId, new String[0]);
-		readThread = new Thread(this, "WebSocketReader-" + sessionId);
-		writeThread = new Thread(new Writer(), "WebSocketWriter-" + sessionId);
+		readThread = new Thread(this, "WebSocketReader-" + socket.getPort());
 		readThread.start();
-		writeThread.start();
 	}
 
 	/* ---------- WebSocket handshake ---------- */
@@ -146,8 +160,24 @@ public class WebSocketSession implements Runnable
 					for(int i = 0; i < payload.length; i++) { payload[i] ^= mask[i % 4]; }
 				}
 				if(opcode == 0x8) { break; } // close
+				if(opcode == 0x1 && !configured)
+				{
+					String json = new String(payload, "UTF-8");
+					if(!handleConfig(json))
+					{
+						sendText("{\"error\":\"invalid config\"}");
+						break;
+					}
+					configured = true;
+					continue;
+				}
 				if(opcode == 0x1 || opcode == 0x2)
 				{
+					if(!configured)
+					{
+						sendText("{\"error\":\"send config first\"}");
+						continue;
+					}
 					// Raw libretro input commands from client
 					manager.sendRaw(sessionId, payload);
 				}
@@ -160,8 +190,126 @@ public class WebSocketSession implements Runnable
 		finally
 		{
 			running = false;
-			manager.destroySession(sessionId);
+			if(sessionId != null) { manager.destroySession(sessionId); }
 			try { socket.close(); } catch(IOException e) { }
+		}
+	}
+
+	private boolean handleConfig(String json)
+	{
+		try
+		{
+			Map<String, String> cfg = SimpleJSON.parse(json);
+			String[] args = buildArgs(cfg);
+			String jar = cfg.get("jar");
+			if(jar == null || jar.isEmpty())
+			{
+				System.err.println("WebSocketSession: no 'jar' in config");
+				return false;
+			}
+			sessionId = "ws-" + socket.getInetAddress().getHostAddress() + "-" + socket.getPort() + "-" + System.currentTimeMillis();
+			String dataDir = "data/" + sessionId;
+			manager.createSession(sessionId, dataDir, args);
+			// Send load jar command
+			manager.sendRaw(sessionId, buildLoadJarCommand(jar));
+			// Start writer thread now that we have a session
+			writeThread = new Thread(new Writer(), "WebSocketWriter-" + sessionId);
+			writeThread.start();
+			return true;
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+			return false;
+		}
+	}
+
+	private byte[] buildLoadJarCommand(String jar)
+	{
+		try
+		{
+			byte[] path = jar.getBytes("UTF-8");
+			byte[] cmd = new byte[5 + path.length];
+			cmd[0] = 10; // load jar opcode
+			cmd[1] = (byte)((path.length >> 24) & 0xFF);
+			cmd[2] = (byte)((path.length >> 16) & 0xFF);
+			cmd[3] = (byte)((path.length >> 8) & 0xFF);
+			cmd[4] = (byte)(path.length & 0xFF);
+			System.arraycopy(path, 0, cmd, 5, path.length);
+			return cmd;
+		}
+		catch(Exception e) { throw new RuntimeException(e); }
+	}
+
+	private String[] buildArgs(Map<String, String> cfg)
+	{
+		String[] args = new String[32];
+		args[0]  = getInt(cfg, "width", 240);
+		args[1]  = getInt(cfg, "height", 320);
+		args[2]  = getInt(cfg, "rotate", 0);
+		args[3]  = getInt(cfg, "phone", 0);
+		args[4]  = getInt(cfg, "fps", 0);
+		args[5]  = getInt(cfg, "sound", 1);
+		args[6]  = getInt(cfg, "midi", 0);
+		args[7]  = getInt(cfg, "dumpAudio", 0);
+		args[8]  = getInt(cfg, "logLevel", 2);
+		args[9]  = getInt(cfg, "noAlpha", 1);
+		args[10] = getInt(cfg, "backlight", 1);
+		args[11] = getInt(cfg, "fantasyZone", 0);
+		args[12] = getInt(cfg, "transToOrigin", 0);
+		args[13] = getInt(cfg, "textFont", 0);
+		args[14] = getInt(cfg, "fontOffset", 0);
+		args[15] = getInt(cfg, "dumpGraphics", 0);
+		args[16] = getInt(cfg, "deleteKJX", 1);
+		args[17] = getInt(cfg, "M3GUntextured", 0);
+		args[18] = getInt(cfg, "M3GWireframe", 0);
+		args[19] = getInt(cfg, "fpsHack", 0);
+		args[20] = getInt(cfg, "immediateRepaints", 0);
+		args[21] = getInt(cfg, "overridePlatform", 1);
+		args[22] = getInt(cfg, "siemensFriendly", 0);
+		args[23] = getInt(cfg, "M3GHalfRes", 0);
+		args[24] = getInt(cfg, "DoJaVersion", 200);
+		args[25] = getInt(cfg, "ignoreVolume", 0);
+		args[26] = getInt(cfg, "MCV3HalfRes", 0);
+		args[27] = getInt(cfg, "MCV3NoLight", 0);
+		args[28] = getInt(cfg, "MCV3HFOV", 0);
+		args[29] = getInt(cfg, "MCV3Heap", 0);
+		args[30] = getInt(cfg, "MCV3Time", 0);
+		args[31] = getInt(cfg, "fontOffset2", 0);
+		return args;
+	}
+
+	private String getInt(Map<String, String> cfg, String key, int def)
+	{
+		String v = cfg.get(key);
+		if(v == null || v.isEmpty()) { return String.valueOf(def); }
+		try { return String.valueOf(Integer.parseInt(v)); }
+		catch(NumberFormatException e) { return String.valueOf(def); }
+	}
+
+	private void sendText(String text) throws IOException
+	{
+		byte[] data = text.getBytes("UTF-8");
+		synchronized(out)
+		{
+			out.write(0x81); // FIN + text
+			if(data.length < 126)
+			{
+				out.write(data.length);
+			}
+			else if(data.length <= 65535)
+			{
+				out.write(126);
+				out.write((data.length >> 8) & 0xFF);
+				out.write(data.length & 0xFF);
+			}
+			else
+			{
+				out.write(127);
+				for(int i = 7; i >= 0; i--) { out.write((data.length >> (i * 8)) & 0xFF); }
+			}
+			out.write(data);
+			out.flush();
 		}
 	}
 
