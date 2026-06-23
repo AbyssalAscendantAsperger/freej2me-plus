@@ -192,4 +192,3 @@ Although all arguments aside from the path are optional to launch FreeJ2ME-Plus 
   1) Open an Issue
   2) Explain it in as much detail as you can (FreeJ2ME-Plus version, jar used, md5 hash, as well as the issue with logs and images if possible)
   3) Post a save file close to where the issue manifests, or note the steps required to reproduce it
-(LMAO)
