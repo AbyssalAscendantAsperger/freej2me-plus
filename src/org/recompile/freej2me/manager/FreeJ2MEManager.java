@@ -21,7 +21,7 @@ import org.recompile.freej2me.session.*;
 */
 public class FreeJ2MEManager
 {
-	private final Map<String, Object> sessions = new ConcurrentHashMap<String, Object>();
+	private final Map<String, LibretroEmbeddedSession> sessions = new ConcurrentHashMap<String, LibretroEmbeddedSession>();
 	private final ClassLoader parentLoader;
 	private final URL coreJarUrl;
 
@@ -51,7 +51,8 @@ public class FreeJ2MEManager
 			// However, the session's Libretro / Mobile classes will be loaded from the child.
 			Class<?> sessionClass = loader.loadClass("org.recompile.freej2me.session.LibretroEmbeddedSession");
 
-			Object session = sessionClass.getConstructor(String.class).newInstance(sessionId);
+			Object sessionObj = sessionClass.getConstructor(String.class).newInstance(sessionId);
+			LibretroEmbeddedSession session = (LibretroEmbeddedSession)sessionObj;
 
 			// Prepare queues
 			QueueInputSource input = new QueueInputSource();
@@ -86,12 +87,11 @@ public class FreeJ2MEManager
 
 	public boolean destroySession(String sessionId)
 	{
-		Object session = sessions.remove(sessionId);
+		LibretroEmbeddedSession session = sessions.remove(sessionId);
 		if(session == null) { return false; }
 		try
 		{
-			Method stop = session.getClass().getMethod("stop");
-			stop.invoke(session);
+			session.stop();
 			return true;
 		}
 		catch(Exception e)
@@ -101,20 +101,31 @@ public class FreeJ2MEManager
 		}
 	}
 
-	public Object getSession(String sessionId)
+	public LibretroEmbeddedSession getSession(String sessionId)
 	{
 		return sessions.get(sessionId);
 	}
 
-	public boolean sendKey(String sessionId, int key, boolean down)
+	public boolean sendRaw(String sessionId, byte[] data)
 	{
-		Object session = sessions.get(sessionId);
+		LibretroEmbeddedSession session = sessions.get(sessionId);
 		if(session == null) { return false; }
 		try
 		{
-			Class<?> c = session.getClass();
-			if(down) { c.getMethod("sendKeyDown", int.class).invoke(session, key); }
-			else { c.getMethod("sendKeyUp", int.class).invoke(session, key); }
+			session.sendRaw(data);
+			return true;
+		}
+		catch(Exception e) { return false; }
+	}
+
+	public boolean sendKey(String sessionId, int key, boolean down)
+	{
+		LibretroEmbeddedSession session = sessions.get(sessionId);
+		if(session == null) { return false; }
+		try
+		{
+			if(down) { session.sendKeyDown(key); }
+			else { session.sendKeyUp(key); }
 			return true;
 		}
 		catch(Exception e) { return false; }
@@ -122,14 +133,13 @@ public class FreeJ2MEManager
 
 	public boolean sendTouch(String sessionId, int x, int y, int state)
 	{
-		Object session = sessions.get(sessionId);
+		LibretroEmbeddedSession session = sessions.get(sessionId);
 		if(session == null) { return false; }
 		try
 		{
-			Class<?> c = session.getClass();
-			if(state == 0) { c.getMethod("sendPointerPressed", int.class, int.class).invoke(session, x, y); }
-			else if(state == 1) { c.getMethod("sendPointerReleased", int.class, int.class).invoke(session, x, y); }
-			else { c.getMethod("sendPointerDragged", int.class, int.class).invoke(session, x, y); }
+			if(state == 0) { session.sendPointerPressed(x, y); }
+			else if(state == 1) { session.sendPointerReleased(x, y); }
+			else { session.sendPointerDragged(x, y); }
 			return true;
 		}
 		catch(Exception e) { return false; }
@@ -137,11 +147,11 @@ public class FreeJ2MEManager
 
 	public boolean requestFrame(String sessionId)
 	{
-		Object session = sessions.get(sessionId);
+		LibretroEmbeddedSession session = sessions.get(sessionId);
 		if(session == null) { return false; }
 		try
 		{
-			session.getClass().getMethod("requestFrame").invoke(session);
+			session.requestFrame();
 			return true;
 		}
 		catch(Exception e) { return false; }
@@ -150,12 +160,11 @@ public class FreeJ2MEManager
 	/* Poll a frame packet from the session's queue. */
 	public FramePacket takeFrame(String sessionId)
 	{
-		Object session = sessions.get(sessionId);
+		LibretroEmbeddedSession session = sessions.get(sessionId);
 		if(session == null) { return null; }
 		try
 		{
-			Object sink = session.getClass().getMethod("getFrameSink").invoke(session);
-			return ((QueueFrameSink)sink).poll();
+			return session.getFrameSink().poll();
 		}
 		catch(Exception e) { return null; }
 	}
@@ -163,12 +172,11 @@ public class FreeJ2MEManager
 	/* Poll an audio packet from the session's queue. */
 	public AudioPacket takeAudio(String sessionId)
 	{
-		Object session = sessions.get(sessionId);
+		LibretroEmbeddedSession session = sessions.get(sessionId);
 		if(session == null) { return null; }
 		try
 		{
-			Object sink = session.getClass().getMethod("getAudioSink").invoke(session);
-			return ((QueueAudioSink)sink).poll();
+			return session.getAudioSink().poll();
 		}
 		catch(Exception e) { return null; }
 	}

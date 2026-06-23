@@ -85,12 +85,16 @@ public final class LibretroEmbeddedSession
 					}
 					if(loader != null)
 					{
+						Class<?> mobileClass = Class.forName("org.recompile.mobile.Mobile", true, loader);
+						mobileClass.getMethod("initSessionProperties").invoke(null);
+						mobileClass.getField("isManagedSession").setBoolean(null, true);
 						Class<?> libretroClass = Class.forName("org.recompile.freej2me.Libretro", true, loader);
 						Constructor<?> ctor = libretroClass.getConstructor(String[].class, InputSource.class, FrameSink.class, AudioSink.class);
 						ctor.newInstance(args, input, frames, audio);
 					}
 					else
 					{
+						org.recompile.mobile.Mobile.initSessionProperties();
 						new Libretro(args, input, frames, audio);
 					}
 				}

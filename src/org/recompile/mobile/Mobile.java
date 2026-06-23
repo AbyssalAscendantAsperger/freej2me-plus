@@ -22,7 +22,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Queue;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -69,6 +71,37 @@ public class Mobile
 		if(d != null) { return d; }
 		return "freej2me_system";
 	}
+
+	private static final InheritableThreadLocal<Map<String, String>> sessionProperties = new InheritableThreadLocal<Map<String, String>>() {
+		protected Map<String, String> initialValue() { return new HashMap<String, String>(); }
+	};
+
+	public static String getSessionProperty(String key)
+	{
+		Map<String, String> map = sessionProperties.get();
+		if(map.containsKey(key)) { return map.get(key); }
+		return System.getProperty(key);
+	}
+
+	public static String getSessionProperty(String key, String def)
+	{
+		Map<String, String> map = sessionProperties.get();
+		if(map.containsKey(key)) { return map.get(key); }
+		String val = System.getProperty(key);
+		return val != null ? val : def;
+	}
+
+	public static String setSessionProperty(String key, String value)
+	{
+		return sessionProperties.get().put(key, value);
+	}
+
+	public static void initSessionProperties()
+	{
+		sessionProperties.set(new HashMap<String, String>());
+	}
+
+	public static boolean isManagedSession = false;
 
 	private static Display display;
 
@@ -1153,6 +1186,13 @@ public class Mobile
 
 	public static void restartApp() 
 	{
+		if(isManagedSession)
+		{			libretroRestartRequested = 1;
+			if(textEncoding.equals("ISO_8859_1"))         { libretroEncodingRequested = 0; }
+			else if(textEncoding.equals("Shift_JIS"))     { libretroEncodingRequested = 1; }
+			else if(textEncoding.equals("EUC_KR"))        { libretroEncodingRequested = 2; }
+			return;
+		}
 		try 
 		{
 			String java = System.getProperty("java.home") + "/bin/java";

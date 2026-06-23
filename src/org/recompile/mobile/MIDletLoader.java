@@ -148,51 +148,51 @@ public class MIDletLoader extends URLClassLoader
 			e.printStackTrace();
 		}
 
-		System.setProperty("audio.samplerates", "8000 11025 12000 16000 22050 24000 32000 44100 48000");
-		System.setProperty("audio3d.simultaneouslocations", "8");
-		System.setProperty("bluetooth.api.version", "1.0");
-		System.setProperty("camera.orientations", "devcam0:outwards devcam1:inwards");
-		System.setProperty("camera.resolutions", "devcam0:640x480 devcam1:640x480");
-		System.setProperty("com.siemens.IMEI", "000000000005152");
-		System.setProperty("com.siemens.OSVersion", "11");
-		System.setProperty("com.sonyericsson.imei", "IMEI9 00460101-501594-5-00");
-		System.setProperty("device.imei", "000000000000000");
-		System.setProperty("microedition.amms.version", "1.1");
-		System.setProperty("microedition.broadcast.supports.filecache", "true");
-		System.setProperty("microedition.broadcast.supports.overlay", "true");
-		System.setProperty("microedition.broadcast.supports.purchasing", "true");
-		System.setProperty("microedition.broadcast.supports.timedrecording", "true");
-		System.setProperty("microedition.broadcast.version", "1.0");
-		System.setProperty("microedition.configuration", "CLDC-1.1");
-		System.setProperty("microedition.encoding", System.getProperty("file.encoding"));
-		System.setProperty("microedition.io.file.FileConnection.version", "1.0");
-		System.setProperty("microedition.jtwi.version", "1.0");
-		System.setProperty("microedition.locale", "en-US");
-		System.setProperty("microedition.media.version", "1.1");
-		System.setProperty("microedition.m3g.version", "1.1");
-		System.setProperty("microedition.pim.version", "1.0");
-		System.setProperty("microedition.sensor.version", "1.0");
-		System.setProperty("microedition.platform", "FreeJ2ME-Plus, a Cross-Platform J2ME Emulator.");
-		System.setProperty("microedition.profiles", "MIDP-2.0");
-		System.setProperty("supports.audio.capture", "true");
-		System.setProperty("supports.mediacapabilities", "music audio3d imageencoding imagepostprocessing camera tuner");
-		System.setProperty("supports.mixing", "true");
-		System.setProperty("supports.recording", "true");
-		System.setProperty("supports.video.capture", "true");
-		System.setProperty("tuner.modulations", "am fm");
-		System.setProperty("wireless.messaging.mms.mmsc", "http://abc.stubfreej2meplus.net");
-		System.setProperty("wireless.messaging.sms.smsc", "+8613800010000");
-		System.setProperty("wireless.messaging.version", "1.0");
+		Mobile.setSessionProperty("audio.samplerates", "8000 11025 12000 16000 22050 24000 32000 44100 48000");
+		Mobile.setSessionProperty("audio3d.simultaneouslocations", "8");
+		Mobile.setSessionProperty("bluetooth.api.version", "1.0");
+		Mobile.setSessionProperty("camera.orientations", "devcam0:outwards devcam1:inwards");
+		Mobile.setSessionProperty("camera.resolutions", "devcam0:640x480 devcam1:640x480");
+		Mobile.setSessionProperty("com.siemens.IMEI", "000000000005152");
+		Mobile.setSessionProperty("com.siemens.OSVersion", "11");
+		Mobile.setSessionProperty("com.sonyericsson.imei", "IMEI9 00460101-501594-5-00");
+		Mobile.setSessionProperty("device.imei", "000000000000000");
+		Mobile.setSessionProperty("microedition.amms.version", "1.1");
+		Mobile.setSessionProperty("microedition.broadcast.supports.filecache", "true");
+		Mobile.setSessionProperty("microedition.broadcast.supports.overlay", "true");
+		Mobile.setSessionProperty("microedition.broadcast.supports.purchasing", "true");
+		Mobile.setSessionProperty("microedition.broadcast.supports.timedrecording", "true");
+		Mobile.setSessionProperty("microedition.broadcast.version", "1.0");
+		Mobile.setSessionProperty("microedition.configuration", "CLDC-1.1");
+		Mobile.setSessionProperty("microedition.encoding", Mobile.getSessionProperty("file.encoding"));
+		Mobile.setSessionProperty("microedition.io.file.FileConnection.version", "1.0");
+		Mobile.setSessionProperty("microedition.jtwi.version", "1.0");
+		Mobile.setSessionProperty("microedition.locale", "en-US");
+		Mobile.setSessionProperty("microedition.media.version", "1.1");
+		Mobile.setSessionProperty("microedition.m3g.version", "1.1");
+		Mobile.setSessionProperty("microedition.pim.version", "1.0");
+		Mobile.setSessionProperty("microedition.sensor.version", "1.0");
+		Mobile.setSessionProperty("microedition.platform", "FreeJ2ME-Plus, a Cross-Platform J2ME Emulator.");
+		Mobile.setSessionProperty("microedition.profiles", "MIDP-2.0");
+		Mobile.setSessionProperty("supports.audio.capture", "true");
+		Mobile.setSessionProperty("supports.mediacapabilities", "music audio3d imageencoding imagepostprocessing camera tuner");
+		Mobile.setSessionProperty("supports.mixing", "true");
+		Mobile.setSessionProperty("supports.recording", "true");
+		Mobile.setSessionProperty("supports.video.capture", "true");
+		Mobile.setSessionProperty("tuner.modulations", "am fm");
+		Mobile.setSessionProperty("wireless.messaging.mms.mmsc", "http://abc.stubfreej2meplus.net");
+		Mobile.setSessionProperty("wireless.messaging.sms.smsc", "+8613800010000");
+		Mobile.setSessionProperty("wireless.messaging.version", "1.0");
 
 		// SKT stuff
-		System.setProperty("com.xce.wipi.version", "1.0.0");
-		System.setProperty("m.SK_VM", "20");
-		System.setProperty("m.VENDER", "LG");
-		System.setProperty("m.MODEL", "11");
-		System.setProperty("m.CARRIER", "SKT");
-		System.setProperty("m.COLOR", "5");
-		System.setProperty("m.MIN", "0000000000");
-		System.setProperty("MIN", "0000000000"); // legacy SK-VM 1.0.x property
+		Mobile.setSessionProperty("com.xce.wipi.version", "1.0.0");
+		Mobile.setSessionProperty("m.SK_VM", "20");
+		Mobile.setSessionProperty("m.VENDER", "LG");
+		Mobile.setSessionProperty("m.MODEL", "11");
+		Mobile.setSessionProperty("m.CARRIER", "SKT");
+		Mobile.setSessionProperty("m.COLOR", "5");
+		Mobile.setSessionProperty("m.MIN", "0000000000");
+		Mobile.setSessionProperty("MIN", "0000000000"); // legacy SK-VM 1.0.x property
 
 		// Integrate properties retrieved from JAD file, if any.
 		properties.putAll(descriptorProperties);
@@ -220,7 +220,7 @@ public class MIDletLoader extends URLClassLoader
 		properties.put("microedition.broadcast.supports.timedrecording", "true");
 		properties.put("microedition.broadcast.version", "1.0");
 		properties.put("microedition.configuration", "CLDC-1.1");
-		properties.put("microedition.encoding", System.getProperty("file.encoding"));
+		properties.put("microedition.encoding", Mobile.getSessionProperty("file.encoding"));
 		properties.put("microedition.io.file.FileConnection.version", "1.0");
 		properties.put("microedition.jtwi.version", "1.0");
 		properties.put("microedition.locale", "en-US");
@@ -415,7 +415,7 @@ public class MIDletLoader extends URLClassLoader
 							{ 
 								if(currentKey.contains("Nokia-Platform") && Mobile.compatOverridePlatformChecks) // This override check doesn't work yet and resolves to true, as we haven't loaded the configs yet
 								{
-									System.setProperty("microedition.platform", currentValue.toString().trim());
+									Mobile.setSessionProperty("microedition.platform", currentValue.toString().trim());
 									keyValueMap.put("microedition.platform", currentValue.toString().trim()); 
 								}
 								else { keyValueMap.put(currentKey, currentValue.toString().trim()); }
@@ -442,7 +442,7 @@ public class MIDletLoader extends URLClassLoader
 					{ 
 						if(currentKey.contains("Nokia-Platform") && Mobile.compatOverridePlatformChecks) 
 						{
-							System.setProperty("microedition.platform", currentValue.toString().trim());
+							Mobile.setSessionProperty("microedition.platform", currentValue.toString().trim());
 							keyValueMap.put("microedition.platform", currentValue.toString().trim()); 
 						}
 						else { keyValueMap.put(currentKey, currentValue.toString().trim()); }
@@ -751,14 +751,14 @@ public class MIDletLoader extends URLClassLoader
 			}
 		}
 
-		if (resourceName.contains(System.getProperty("microedition.locale")))
+		if (resourceName.contains(Mobile.getSessionProperty("microedition.locale")))
 		{
 			Mobile.log(Mobile.LOG_DEBUG, MIDletLoader.class.getPackage().getName() + "." + MIDletLoader.class.getSimpleName() + ": " + "Requested resource appears to be a language file. Checking for alternatives...");
 
 			// Search for any language files matching the list of supported locales
 			for (String locale : supportedLocales)
 			{
-				String fallbackResourceName = resourceName.replace(System.getProperty("microedition.locale"), locale);
+				String fallbackResourceName = resourceName.replace(Mobile.getSessionProperty("microedition.locale"), locale);
 				for (JarEntry entry : jarEntries)
 				{
 					String entryName = entry.getName();
@@ -1133,6 +1133,25 @@ public class MIDletLoader extends URLClassLoader
 				else if (opcode == INVOKEVIRTUAL && name.equals("getResourceAsStream") && owner.equals("java/lang/Class"))
 				{
 					mv.visitMethodInsn(INVOKESTATIC, "org/recompile/mobile/Mobile", name, "(Ljava/lang/Class;Ljava/lang/String;)Ljava/io/InputStream;");
+				}
+				else if (opcode == Opcodes.INVOKESTATIC && "java/lang/System".equals(owner) && "getProperty".equals(name))
+				{
+					if("(Ljava/lang/String;)Ljava/lang/String;".equals(desc))
+					{
+						mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/recompile/mobile/Mobile", "getSessionProperty", "(Ljava/lang/String;)Ljava/lang/String;");
+					}
+					else if("(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;".equals(desc))
+					{
+						mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/recompile/mobile/Mobile", "getSessionProperty", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+					}
+					else
+					{
+						mv.visitMethodInsn(opcode, owner, name, desc);
+					}
+				}
+				else if (opcode == Opcodes.INVOKESTATIC && "java/lang/System".equals(owner) && "setProperty".equals(name) && "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;".equals(desc))
+				{
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/recompile/mobile/Mobile", "setSessionProperty", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
 				}
 				else
 				{
