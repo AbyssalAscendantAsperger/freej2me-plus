@@ -175,7 +175,9 @@ public class FreeJ2MEManager
 		if(session == null) { return null; }
 		try
 		{
-			return session.getFrameSink().poll();
+			FrameSink sink = session.getFrameSink();
+			if(sink instanceof QueueFrameSink) { return ((QueueFrameSink)sink).poll(); }
+			return null;
 		}
 		catch(Exception e) { return null; }
 	}
@@ -187,7 +189,9 @@ public class FreeJ2MEManager
 		if(session == null) { return null; }
 		try
 		{
-			return session.getAudioSink().poll();
+			AudioSink sink = session.getAudioSink();
+			if(sink instanceof QueueAudioSink) { return ((QueueAudioSink)sink).poll(); }
+			return null;
 		}
 		catch(Exception e) { return null; }
 	}

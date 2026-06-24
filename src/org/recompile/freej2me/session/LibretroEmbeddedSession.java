@@ -9,21 +9,18 @@ import org.recompile.freej2me.Libretro;
 /*
 	Embeddable libretro runtime wrapper.
 
-	v0.6 changes:
-	- Added AudioSink support (QueueAudioSink) so audio is routed per-session.
-	- Added ClassLoader-based isolation: when a custom ClassLoader is provided,
-	  Libretro is instantiated via reflection so that Mobile/MobilePlatform/Display
-	  static globals are duplicated per session.
-	- Added ThreadGroup so session threads can be bulk-interrupted on stop().
-	- Added per-session data directory (dataDir) for log/RMS/temp isolation.
-	- Added lifecycle cleanup (input/frame/audio sinks, thread interrupt, queue drain).
+	v0.7 changes:
+	- Fixed instanceof guard in setters so custom InputSource/FrameSink/AudioSink implementations are accepted.
+	- Changed internal field types to interfaces (InputSource, FrameSink, AudioSink).
+	- Added convenience constructor LibretroEmbeddedSession(sessionId, input, frames, audio).
+	- Updated push helpers and stop() cleanup to handle interface types safely.
 */
 public final class LibretroEmbeddedSession
 {
 	private final String sessionId;
-	private QueueInputSource input;
-	private QueueFrameSink frames;
-	private QueueAudioSink audio;
+	private InputSource input;
+	private FrameSink frames;
+	private AudioSink audio;
 	private String dataDir;
 	private ThreadGroup threadGroup;
 	private Thread thread;
@@ -33,31 +30,36 @@ public final class LibretroEmbeddedSession
 
 	public LibretroEmbeddedSession(String sessionId)
 	{
+		this(sessionId, null, null, null);
+	}
+
+	public LibretroEmbeddedSession(String sessionId, InputSource input, FrameSink frames, AudioSink audio)
+	{
 		this.sessionId = sessionId == null ? "session" : sessionId;
-		this.input = new QueueInputSource();
-		this.frames = new QueueFrameSink();
-		this.audio = new QueueAudioSink();
+		this.input = input != null ? input : new QueueInputSource();
+		this.frames = frames != null ? frames : new QueueFrameSink();
+		this.audio = audio != null ? audio : new QueueAudioSink();
 	}
 
 	public String getSessionId() { return sessionId; }
-	public QueueInputSource getInputSource() { return input; }
-	public QueueFrameSink getFrameSink() { return frames; }
-	public QueueAudioSink getAudioSink() { return audio; }
+	public InputSource getInputSource() { return input; }
+	public FrameSink getFrameSink() { return frames; }
+	public AudioSink getAudioSink() { return audio; }
 	public boolean isRunning() { return running; }
 
 	public void setInputSource(InputSource input)
 	{
-		if(input instanceof QueueInputSource) { this.input = (QueueInputSource)input; }
+		if(input != null) { this.input = input; }
 	}
 
 	public void setFrameSink(FrameSink frames)
 	{
-		if(frames instanceof QueueFrameSink) { this.frames = (QueueFrameSink)frames; }
+		if(frames != null) { this.frames = frames; }
 	}
 
 	public void setAudioSink(AudioSink audio)
 	{
-		if(audio instanceof QueueAudioSink) { this.audio = (QueueAudioSink)audio; }
+		if(audio != null) { this.audio = audio; }
 	}
 
 	public void setDataDir(String dir) { this.dataDir = dir; }
@@ -130,9 +132,9 @@ public final class LibretroEmbeddedSession
 	public void stop()
 	{
 		running = false;
-		try { input.close(); } catch(IOException e) { }
-		try { frames.close(); } catch(IOException e) { }
-		try { audio.close(); } catch(IOException e) { }
+		if(input != null) { try { input.close(); } catch(IOException e) { } }
+		if(frames != null) { try { frames.close(); } catch(IOException e) { } }
+		if(audio != null) { try { audio.close(); } catch(IOException e) { } }
 		if(thread != null)
 		{
 			thread.interrupt();
@@ -148,13 +150,13 @@ public final class LibretroEmbeddedSession
 		}
 		// Drain queues so the session doesn't hold references
 		if(input != null) { try { input.close(); } catch(IOException e) { } }
-		if(frames != null) { while(frames.poll() != null); }
-		if(audio != null) { while(audio.poll() != null); }
+		if(frames instanceof QueueFrameSink) { while(((QueueFrameSink)frames).poll() != null); }
+		if(audio instanceof QueueAudioSink) { while(((QueueAudioSink)audio).poll() != null); }
 	}
 
 	public void sendRaw(byte[] bytes)
 	{
-		input.push(bytes);
+		pushInput(bytes);
 	}
 
 	public void sendKeyDown(int keyIndex) { sendCommandInt(3, keyIndex); }
@@ -170,7 +172,7 @@ public final class LibretroEmbeddedSession
 		try { data = path.getBytes("UTF-8"); }
 		catch(UnsupportedEncodingException e) { data = path.getBytes(); }
 		sendCommandInt(10, data.length);
-		input.push(data);
+		pushInput(data);
 	}
 
 	public void setDataPath(String path)
@@ -179,7 +181,7 @@ public final class LibretroEmbeddedSession
 		try { data = path.getBytes("UTF-8"); }
 		catch(UnsupportedEncodingException e) { data = path.getBytes(); }
 		sendCommandInt(11, data.length);
-		input.push(data);
+		pushInput(data);
 	}
 
 	public void requestFrame()
@@ -195,7 +197,7 @@ public final class LibretroEmbeddedSession
 		b[2] = (byte)(fastForwardMultiplierScaled & 0xFF);
 		b[3] = (byte)(frontendPausedAck ? 1 : 0);
 		b[4] = (byte)(fastForward ? 1 : 0);
-		input.push(b);
+		pushInput(b);
 	}
 
 	private void sendCommandInt(int command, int value)
@@ -206,7 +208,7 @@ public final class LibretroEmbeddedSession
 		b[2] = (byte)((value >> 16) & 0xFF);
 		b[3] = (byte)((value >> 8) & 0xFF);
 		b[4] = (byte)(value & 0xFF);
-		input.push(b);
+		pushInput(b);
 	}
 
 	private void sendPointerCommand(int command, int x, int y)
@@ -217,6 +219,14 @@ public final class LibretroEmbeddedSession
 		b[2] = (byte)(x & 0xFF);
 		b[3] = (byte)((y >> 8) & 0xFF);
 		b[4] = (byte)(y & 0xFF);
-		input.push(b);
+		pushInput(b);
+	}
+
+	private void pushInput(byte[] bytes)
+	{
+		if(input instanceof QueueInputSource)
+		{
+			((QueueInputSource)input).push(bytes);
+		}
 	}
 }
