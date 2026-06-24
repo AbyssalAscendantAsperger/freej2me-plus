@@ -1,194 +1,277 @@
+# FreeJ2ME-Plus (Web-Oriented Fork)
 
-![BannerFinal](https://github.com/user-attachments/assets/ca82914c-e30e-406d-8d2e-487bda6263af)
+> **Một bản fork tập trung vào việc biến FreeJ2ME-Plus thành một nền tảng headless có khả năng chạy đa người dùng.**
 
-<h1 align="center"> Current status </h1>
-
-<div align="center">
-
-[![Java CI](https://img.shields.io/github/actions/workflow/status/TASEmulators/freej2me-plus/ant.yml?style=for-the-badge&label=FreeJ2ME-Plus%20Core)](https://github.com/jpcsp/jpcsp/blob/master/.github/workflows/main.yml)
-[![Website](https://img.shields.io/website?url=https%3A%2F%2Fjpcsp.org%2F&style=for-the-badge&label=FreeJ2ME-Plus%20Webpage)](https://tasemulators.github.io/freej2me-plus/)
-![Java version](https://img.shields.io/badge/Java-6-44cc11?style=for-the-badge&label=Minimum%20Java%20VM)
-![License](https://img.shields.io/badge/license-GPLv3-red?style=for-the-badge&label=Project%20License)
-![Open Issues](https://img.shields.io/github/issues/TASEmulators/freej2me-plus?style=for-the-badge)
-![Last Commit](https://img.shields.io/github/last-commit/TASEmulators/freej2me-plus?style=for-the-badge)
-
-</div>
-
-<h1 align="center"> Links to FreeJ2ME-Plus Builds </h1>
-
-<div align="center">
-
-[![Nightly Releases](https://img.shields.io/github/v/release/TASEmulators/freej2me-plus?label=Bleeding%20Edge%20Builds:&style=for-the-badge)](https://github.com/TASEmulators/freej2me-plus/releases/tag/nightlies)
-[![Latest Stable Release](https://img.shields.io/badge/version-v1.52-blue?label=Latest%20Stable%20Release:&style=for-the-badge)](https://github.com/TASEmulators/freej2me-plus/releases/tag/1.52)
-
-</div>
+Đây là bản fork của [TASEmulators/freej2me-plus](https://github.com/TASEmulators/freej2me-plus) với định hướng hoàn toàn khác: thay vì tối ưu cho RetroArch hay GUI truyền thống, phiên bản này được thiết kế để dễ dàng tích hợp vào các ứng dụng web và backend.
 
 ---
 
-# :question: What is it?
+## Tại sao cần bản fork này?
 
-### FreeJ2ME-Plus is a J2ME emulator with libretro and AWT frontends, it aims to run on basically anything that can run a Java VM.
+Hầu hết các giải pháp J2ME trên trình duyệt hiện nay đều đi theo hướng **transpile** (CheerpJ, J2ME.js, v.v.). Những giải pháp này có ưu điểm là chạy hoàn toàn trên client, nhưng lại có giới hạn nghiêm trọng về độ tương thích.
 
-### Original authors :
-#### - David Richardson [Recompile@retropie]
-#### - Saket Dandawate  [Hex@retropie]
+FreeJ2ME-Plus vốn dĩ là một máy ảo Java ME thực thụ, có khả năng chạy được rất nhiều game phức tạp mà các giải pháp browser-based không thể làm được. Tuy nhiên, bản gốc được thiết kế chủ yếu để chạy như một ứng dụng desktop hoặc core RetroArch.
 
-### Current maintainer:
-#### - Paulo Sousa [AShiningRay]
+Bản fork này được tạo ra với mục tiêu duy nhất: **biến FreeJ2ME-Plus thành một thành phần có thể nhúng được** vào các hệ thống backend/web.
 
 ---
 
-# :bar_chart: Compatibility list
+## Điểm khác biệt lớn so với upstream
 
-### For a general idea of what can or cannot run, look [HERE](https://tasemulators.github.io/freej2me-plus/)
+Thay vì mỗi người dùng phải chạy một JVM riêng (rất tốn RAM), bản fork này giới thiệu **kiến trúc Multi-Session Isolation**.
 
-----
-# :gear: :coffee: Building FreeJ2ME-Plus
+### Kiến trúc cũ (upstream)
+```
+User 1 → JVM 1 (200MB+) + Game
+User 2 → JVM 2 (200MB+) + Game
+...
+→ RAM tăng tuyến tính theo số người chơi
+```
 
->**Make sure you have Apache Ant installed and can run it. Then, from the freej2me directory, run the following command (yes, it's that simple):**
->```
-> > ant
->```
->**That command will create two different jar files inside `build/`:**
->
->**`freej2me.jar` -> Standalone AWT jar executable, can be double-clicked right away to start**
->
->**`freej2me-lr.jar` -> Libretro executable (has to be placed on the frontend's `system/` folder, since it acts as a BIOS for the libretro core and is what runs J2ME jars)**
->
->### **NOTE: The Libretro jar file needs additional binaries to be compiled before use. Look at the additional steps below if you're going to use it.**
+### Kiến trúc mới (fork)
+```
+User 1 ─┐
+User 2 ─┼─→ Single JVM + Session Isolation + Shared Resources
+User 3 ─┘
+→ RAM chủ yếu chỉ tăng theo kích thước game, không phải theo số JVM
+```
 
-# :gear: :video_game: Building the Libretro core
-
-### Building for Linux:
->**To build the libretro core, be sure you can run the `make` command, then open a terminal in freej2me's folder run the following commands from there:**
->```
-># libretro core compilation
-> > cd src/libretro
-> > make
->```
->**This will build `freej2me_libretro.so` on `src/libretro/`, which is the core libretro will use to interface with `freej2me-lr.jar`.**
->
->**Move it to your libretro frontend's `cores/` folder, with freej2me-lr.jar on `system/` and the frontend should be able to load j2me files afterwards.**
->
-> ### **NOTE: The core DOES NOT WORK on containerized/sandboxed environments unless it can call a java runtime that also resides in the same sandbox or container, keep that in mind if you're running a libretro frontend through something like flatpak or snap for example.**
->
-
-<h1> </h1>
-
-### Building for Windows:
->**To build the libretro core for windows, first you'll need mingw, or MSYS2 64. **`This guide uses MSYS2`** as it's easier to set up and works closer to linux syntax.**
->
->**Download MSYS2-x86_64 and install it on your computer. By default it will create a linux-like 'home' folder on C:\msys64\home\ and will put a folder with your username in there. This is where you have to move the freej2me folder to, so: `C:\msys64\home\USERNAME\freej2mefolder` for example.**
->
->**With the folder placed in there you can build the core, open the MSYS2 UCRT64 terminal from your pc's start menu, and run the following commands:**
->```
-># Installing 'mingw-w64' and 'make' on msys2
-> > pacman -S mingw-w64-ucrt-x86_64-gcc
-> > pacman -S make
->
-> # libretro core compilation
-> > cd freej2mefolder/src/libretro
-> > make
->```
->**This will build `freej2me_libretro.dll` on `freej2mefolder/src/libretro/`, which is the core libretro will use to interface with `freej2me-lr.jar`.**
->
->**Move it to your libretro frontend's `cores/` folder, with freej2me-lr.jar on `system/` and the frontend should be able to load j2me files afterwards.**
->
-> ### **NOTE: The windows core has been tested on Windows 7, 10 & 11 x64.**
->
-----
-# :memo: How to use the AWT frontend:
-
-Launching the AWT frontend (freej2me.jar) directly will bring up the standalone GUI, where you can load your application through the `File` menu, or by **dragging and dropping your JAR/JAD/KJX/MSD file onto it**. 
-
-You can also configure many aspects of the runtime, including debug options:
-
-<img width="252" height="390" alt="image" src="https://github.com/user-attachments/assets/64737dd3-eea6-4437-b236-aeb163841f21" />
-<img width="252" height="390" alt="image" src="https://github.com/user-attachments/assets/5b105d46-d83b-4d1f-9913-687d281523d4" />
-<img width="254" height="390" alt="image" src="https://github.com/user-attachments/assets/95054a08-35fb-4e99-87f2-ba36a9a8629c" />
-
-<img width="968" height="399" alt="image" src="https://github.com/user-attachments/assets/f28042c3-1d7f-47be-8942-0e5a5b2cf2b9" />
-
-<h1> </h1>
-
-Alternatively it can be launched from the command line with the following arguments:
-
-- `fullscreen` :arrow_right: `1 = yes, 0 = no`
-- `width` :arrow_right: `self explanatory, it's the virtual LCD's width`
-- `height` :arrow_right: `also self explanatory, it's the virtual LCD's height`
-- `scale` :arrow_right: `for windowed mode, dictates the scale that FreeJ2ME-Plus' window starts with.` 
-  - '2' will make it 2X bigger than the original width and height size for example
-  - **Note that using the '+' and '-' keys also let you scale the window by an integer factor of +-1**
-- `keyLayout` :arrow_right: `specifies which device key layout should be used when booting up.` These can be:
-  - `0  -> Default`
-  - `1  -> LG`
-  - `2  -> Motorola/Softbank`
-  - `3  -> Motorola Triplets`
-  - `4  -> Motorola V8`
-  - `5  -> Motorola A1000`
-  - `6  -> Nokia Keyboard`
-  - `7  -> Sagem`
-  - `8  -> Siemens`
-  - `9  -> Sharp`
-  - `10 -> SKT`
-  - `11 -> KDDI`
-- `framerate` :arrow_right: `sets the maximum FPS applications are allowed to run at.` 
-  - Can be any value, although '10' to '60' is the expected ballpark
-- `dojaversion` :arrow_right: `sets the DoJa/Star profile for the I-Appli to use.` These can be:
-  - `10 -> Default`
-  - `20 -> DoJa 2.0 & International 1.5`
-  - `30 -> DoJa 3.0 & International 2.5`
-  - `35 -> DoJa 3.5`
-  - `40 -> DoJa 4.0`
-  - `41 -> DoJa 4.1`
-  - `50 -> DoJa 5.0`
-  - `51 -> DoJa 5.1`
-  - `100 -> Star 1.0`
-  - `110 -> Star 1.1`
-  - `120 -> Star 1.2`
-  - `130 -> Star 1.3`
-  - `150 -> Star 1.5`
-  - `200 -> Star 2.0`
-
-<h1> </h1>
-
-Those are organized and read internally in this manner: `java -jar freej2me.jar 'file:///path/to/midlet.jar' fullscreen width height scale keyLayout framerate dojaversion`
-
-Although all arguments aside from the path are optional to launch FreeJ2ME-Plus with any given app.
-
-### _Notes:_
-
-**When running under Microsoft Windows please do note paths require an additional `/` prefixed. For example, `C:\path\to\midlet.jar` should be passed as `file:////C:\path\to\midlet.jar`**
-
-**FreeJ2ME keeps savedata and config at the working directory it is run from. Currently any settings specified at the config file take precedence over the values passed via command-line.**
+Kết quả thực tế: **giảm đáng kể RAM overhead** khi chạy nhiều game đồng thời cho nhiều người dùng.
 
 ---
 
-# :mag: Modules and external dependencies used:
+## Tính năng chính đã thêm
 
-- #### JLayer(MPEG Player): - LGPLv2.1 License, compatible with GPLv3
-
-- #### libsdl4j: zlib License, compatible with GPLv3
-
-- #### ObjectWeb's ASM: BSD 3-Clause License, not directly compatible with GPLv3, but can be used as long as the original license is published alongside GPLv3 (check the 'License' tab)
-
-- #### Libretro's API: MIT License, compatible with GPLv3
-
-- #### Roman Lahin [rmn20](https://github.com/rmn20)'s MascotCapsuleV3 renderer (MascotME): MIT License, compatible with GPLv3
+- **LibretroEmbeddedSession**: Chạy emulator ở chế độ headless hoàn toàn, không phụ thuộc AWT.
+- **FrameSink / AudioSink abstraction**: Cho phép đẩy frame và âm thanh ra bất kỳ nơi nào (WebSocket, file, bộ nhớ...).
+- **Queue-based & Stream-based sinks**: Hỗ trợ cả chế độ queue (kiểm soát backpressure) và stream.
+- **Multi-session lifecycle management**: Mỗi session có thể được khởi tạo, reset, và dọn dẹp độc lập.
+- **AudioPipe**: Xuất âm thanh theo định dạng packet dễ dàng tiêu thụ từ bên ngoài.
+- **WebSocket transport layer** (tùy chọn): Đã có sẵn lớp hỗ trợ giao tiếp hai chiều.
 
 ---
 
-# :busts_in_silhouette: How to contribute
+## Use case phù hợp
 
-### If you're a developer:
+Bản fork này đặc biệt phù hợp với những ai muốn:
 
-  1) Open an Issue
-  2) Try solving that issue
-  3) Post on the Issue if you have a possible solution
-  4) Submit a PR implementing the solution
+- Xây dựng **thư viện game J2ME** trên web (đặc biệt là các game hiếm, vendor-specific).
+- Tạo nền tảng **cloud gaming** nhẹ cho J2ME.
+- Chạy hàng trăm game đồng thời trên một server mà không tốn quá nhiều RAM.
+- Tích hợp J2ME vào các hệ thống backend hiện có (Node.js, Go, Python...).
 
-### If you're an user:
+**Lưu ý quan trọng**: Đây không phải là giải pháp "chạy cho hàng nghìn người dùng cùng lúc". Nó phù hợp với mô hình có **hàng đợi** và **giới hạn concurrent session** hợp lý.
 
-  1) Open an Issue
-  2) Explain it in as much detail as you can (FreeJ2ME-Plus version, jar used, md5 hash, as well as the issue with logs and images if possible)
-  3) Post a save file close to where the issue manifests, or note the steps required to reproduce it
+---
+
+## Cách sử dụng
+
+### 1. Chạy game ở chế độ Headless (cơ bản)
+
+```java
+import org.recompile.freej2me.session.LibretroEmbeddedSession;
+import org.recompile.mobile.Mobile;
+
+public class BasicHeadlessExample {
+    public static void main(String[] args) {
+        // Khởi tạo session
+        LibretroEmbeddedSession session = new LibretroEmbeddedSession(
+            "/path/to/game.jar",
+            240, 320,           // resolution
+            0,                  // phone type
+            60                  // fps
+        );
+
+        // Đăng ký nhận frame
+        session.setFrameSink(frame -> {
+            // frame là byte[] hoặc BufferedImage tùy implementation
+            System.out.println("Received frame: " + frame.length + " bytes");
+        });
+
+        // Chạy game
+        session.start();
+
+        // Sau 10 giây thì dừng
+        try { Thread.sleep(10000); } catch (Exception ignored) {}
+        session.stop();
+    }
+}
+```
+
+### 2. Nhận cả Frame + Audio (Stream mode)
+
+```java
+import org.recompile.freej2me.session.*;
+import org.recompile.mobile.AudioPipe;
+
+LibretroEmbeddedSession session = new LibretroEmbeddedSession(jarPath, 240, 320, 0, 60);
+
+// Nhận frame
+session.setFrameSink(new StreamFrameSink() {
+    @Override
+    public void onFrame(byte[] frameData) {
+        // Gửi frame sang WebSocket hoặc xử lý tiếp
+        websocket.sendBinary(frameData);
+    }
+});
+
+// Nhận audio
+session.setAudioSink(new StreamAudioSink() {
+    @Override
+    public void onAudio(byte[] audioData, int format) {
+        // audioData theo định dạng AudioPipe
+        websocket.sendBinary(audioData);
+    }
+});
+
+session.start();
+```
+
+### 3. Sử dụng Queue mode (khuyến nghị cho web)
+
+```java
+import org.recompile.freej2me.session.QueueFrameSink;
+import org.recompile.freej2me.session.QueueAudioSink;
+
+QueueFrameSink frameQueue = new QueueFrameSink(5);   // giữ tối đa 5 frame
+QueueAudioSink audioQueue = new QueueAudioSink(10);  // giữ tối đa 10 packet audio
+
+session.setFrameSink(frameQueue);
+session.setAudioSink(audioQueue);
+
+// Trong thread riêng hoặc event loop
+while (session.isRunning()) {
+    byte[] frame = frameQueue.poll();   // non-blocking hoặc dùng take()
+    byte[] audio = audioQueue.poll();
+
+    if (frame != null) {
+        // Xử lý frame
+    }
+    if (audio != null) {
+        // Xử lý audio
+    }
+}
+```
+
+### 4. Xử lý Input từ Web
+
+```java
+import org.recompile.freej2me.session.InputSource;
+
+InputSource input = session.getInputSource();
+
+// Gửi phím
+input.keyPress(0x35);        // phím 5 (Fire)
+input.keyRelease(0x35);
+
+// Gửi touch (nếu game hỗ trợ)
+input.touchDown(120, 200);
+input.touchMove(125, 205);
+input.touchUp();
+```
+
+### 5. Ví dụ tích hợp với Node.js (WebSocket)
+
+**Server.js (Node.js)**
+
+```js
+const WebSocket = require('ws');
+const { spawn } = require('child_process');
+
+const wss = new WebSocket.Server({ port: 3000 });
+
+wss.on('connection', (ws) => {
+    // Khởi động Java process với session
+    const java = spawn('java', [
+        '-cp', 'freej2me-plus.jar:lib/*',
+        'org.recompile.freej2me.WebSocketMain',
+        ws._socket.remoteAddress
+    ]);
+
+    java.stdout.on('data', (data) => {
+        // Nhận frame/audio từ Java
+        ws.send(data);
+    });
+
+    ws.on('message', (msg) => {
+        // Gửi input từ client về Java
+        java.stdin.write(msg);
+    });
+
+    ws.on('close', () => {
+        java.kill();
+    });
+});
+```
+
+**Java side** (WebSocketMain.java - đã có trong fork):
+
+```java
+// org.recompile.freej2me.transport.WebSocketMain
+public class WebSocketMain {
+    public static void main(String[] args) {
+        String clientId = args[0];
+        LibretroEmbeddedSession session = new LibretroEmbeddedSession(...);
+        
+        WebSocketSession wsSession = new WebSocketSession(clientId);
+        session.setFrameSink(wsSession::sendFrame);
+        session.setAudioSink(wsSession::sendAudio);
+        
+        // Lắng nghe input từ WebSocket
+        wsSession.setInputListener(session.getInputSource());
+        
+        session.start();
+    }
+}
+```
+
+---
+
+## Cấu hình mẫu (config.json)
+
+```json
+{
+  "comment": "Cấu hình cho web bridge",
+  "javaPath": "../jdk8u492-b09-jre/bin/java.exe",
+  "freej2meJar": "../freej2me-plus",
+  "defaultGameJar": null,
+  "width": 240,
+  "height": 320,
+  "phoneType": 0,
+  "rotate": 0,
+  "fps": 60,
+  "sound": 1,
+  "maxFps": 30,
+  "port": 3000,
+  "maxConcurrentSessions": 8,
+  "sessionTimeoutMs": 300000,
+  "enableAudioPipe": true
+}
+```
+
+---
+
+## Quản lý tài nguyên & Chống rò rỉ
+
+Bản fork đã được thiết kế với một số cơ chế bảo vệ:
+
+- Mỗi session có vòng đời rõ ràng (`start()` → `stop()` → `cleanup()`).
+- Tự động dọn dẹp khi session bị timeout.
+- Hỗ trợ `Queue*Sink` để tránh tràn bộ nhớ khi client chậm.
+- Khuyến nghị **luôn gọi `session.stop()`** khi người dùng ngắt kết nối.
+
+---
+
+## Lời kết
+
+Bản fork này được tạo ra vì tôi tin rằng FreeJ2ME-Plus là một trong những core J2ME mạnh nhất hiện nay, nhưng nó xứng đáng được sử dụng theo cách linh hoạt hơn — đặc biệt là trong môi trường web và backend.
+
+Tôi hy vọng trong tương lai upstream có thể hỗ trợ hướng phát triển này. Trong lúc chờ đợi, tôi sẽ tiếp tục duy trì bản fork này để phục vụ những ai cần một giải pháp J2ME thực thụ trên web.
+
+Nếu bạn đang xây dựng một nền tảng lưu trữ hoặc phát hành game J2ME hiếm, bản fork này có thể là một lựa chọn đáng cân nhắc.
+
+---
+
+**License**: Giữ nguyên license của upstream (GPLv3)
+
+**Liên hệ / Đóng góp**: Mở issue trên repo này.
