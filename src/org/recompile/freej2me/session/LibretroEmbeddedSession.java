@@ -9,11 +9,12 @@ import org.recompile.freej2me.Libretro;
 /*
 	Embeddable libretro runtime wrapper.
 
-	v0.7 changes:
+	v0.8 changes:
 	- Fixed instanceof guard in setters so custom InputSource/FrameSink/AudioSink implementations are accepted.
 	- Changed internal field types to interfaces (InputSource, FrameSink, AudioSink).
 	- Added convenience constructor LibretroEmbeddedSession(sessionId, input, frames, audio).
 	- Updated push helpers and stop() cleanup to handle interface types safely.
+	- Added lastActivityTime tracking (touch()) for automatic idle session timeout cleanup.
 */
 public final class LibretroEmbeddedSession
 {
@@ -27,6 +28,7 @@ public final class LibretroEmbeddedSession
 	private volatile boolean running = false;
 	private ClassLoader customLoader;
 	private java.util.Map<String, String> sessionProperties;
+	private volatile long lastActivityTime = System.currentTimeMillis();
 
 	public LibretroEmbeddedSession(String sessionId)
 	{
@@ -46,6 +48,9 @@ public final class LibretroEmbeddedSession
 	public FrameSink getFrameSink() { return frames; }
 	public AudioSink getAudioSink() { return audio; }
 	public boolean isRunning() { return running; }
+
+	public void touch() { this.lastActivityTime = System.currentTimeMillis(); }
+	public long getLastActivityTime() { return lastActivityTime; }
 
 	public void setInputSource(InputSource input)
 	{
@@ -74,6 +79,7 @@ public final class LibretroEmbeddedSession
 	{
 		if(running) { return; }
 		running = true;
+		touch();
 		this.customLoader = loader;
 		this.threadGroup = new ThreadGroup("fj2me-session-" + sessionId);
 		thread = new Thread(threadGroup, new Runnable()
@@ -156,18 +162,20 @@ public final class LibretroEmbeddedSession
 
 	public void sendRaw(byte[] bytes)
 	{
+		touch();
 		pushInput(bytes);
 	}
 
-	public void sendKeyDown(int keyIndex) { sendCommandInt(3, keyIndex); }
-	public void sendKeyUp(int keyIndex) { sendCommandInt(2, keyIndex); }
+	public void sendKeyDown(int keyIndex) { touch(); sendCommandInt(3, keyIndex); }
+	public void sendKeyUp(int keyIndex) { touch(); sendCommandInt(2, keyIndex); }
 
-	public void sendPointerReleased(int x, int y) { sendPointerCommand(4, x, y); }
-	public void sendPointerPressed(int x, int y) { sendPointerCommand(5, x, y); }
-	public void sendPointerDragged(int x, int y) { sendPointerCommand(6, x, y); }
+	public void sendPointerReleased(int x, int y) { touch(); sendPointerCommand(4, x, y); }
+	public void sendPointerPressed(int x, int y) { touch(); sendPointerCommand(5, x, y); }
+	public void sendPointerDragged(int x, int y) { touch(); sendPointerCommand(6, x, y); }
 
 	public void loadJar(String path)
 	{
+		touch();
 		byte[] data;
 		try { data = path.getBytes("UTF-8"); }
 		catch(UnsupportedEncodingException e) { data = path.getBytes(); }
@@ -177,6 +185,7 @@ public final class LibretroEmbeddedSession
 
 	public void setDataPath(String path)
 	{
+		touch();
 		byte[] data;
 		try { data = path.getBytes("UTF-8"); }
 		catch(UnsupportedEncodingException e) { data = path.getBytes(); }
@@ -191,6 +200,7 @@ public final class LibretroEmbeddedSession
 
 	public void requestFrame(int fastForwardMultiplierScaled, boolean frontendPausedAck, boolean fastForward)
 	{
+		touch();
 		byte[] b = new byte[5];
 		b[0] = 15;
 		b[1] = (byte)((fastForwardMultiplierScaled >> 8) & 0xFF);
