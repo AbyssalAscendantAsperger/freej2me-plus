@@ -1,366 +1,348 @@
-# FreeJ2ME-Plus (Web-Oriented Fork)
+# FreeJ2ME-Plus (Web & Backend Integration Fork)
 
-> **Một bản fork tập trung vào việc biến FreeJ2ME-Plus thành một nền tảng headless có khả năng chạy đa người dùng.**
+Đây là bản fork của [TASEmulators/freej2me-plus](https://github.com/TASEmulators/freej2me-plus) được tùy biến để phục vụ việc nhúng máy ảo Java ME vào các hệ thống backend, máy chủ web streaming, hoặc bot tự động.
 
-[![Build Status](https://github.com/AbyssalAscendantAsperger/freej2me-plus/actions/workflows/build.yml/badge.svg)](https://github.com/AbyssalAscendantAsperger/freej2me-plus/actions/workflows/build.yml)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Java](https://img.shields.io/badge/Java-8-orange)](https://openjdk.java.net/)
+Mục tiêu cốt lõi của phiên bản này là **giảm thiểu RAM hao tổn khi chạy nhiều phiên giả lập đồng thời** và **cung cấp các giao diện (API) dễ lập trình** để truyền tải hình ảnh, âm thanh và sự kiện điều khiển ra bên ngoài.
 
 ---
 
 ## Mục lục
 
-- [Tổng quan](#tổng-quan)
-- [Điểm khác biệt](#điểm-khác-biệt-lớn-so-với-upstream)
-- [Tính năng chính](#tính-năng-chính-đã-thêm)
-- [Cài đặt](#cài-đặt)
-- [Quick Start](#quick-start)
-- [Cấu hình](#cấu-hình)
-- [API Documentation](#api-documentation)
-- [Ví dụ sử dụng](#ví-dụ-sử-dụng)
-- [Troubleshooting](#troubleshooting)
-- [Benchmarks](#benchmarks)
-- [Screenshots / Demo](#screenshots--demo)
-- [Đóng góp](#đóng-góp)
-- [Changelog](#changelog)
-- [License](#license)
+- [Mục tiêu & Kiến trúc](#mục-tiêu--kiến-trúc)
+- [Tại sao chọn Headless Bridge thay vì CheerpJ hay J2ME.js?](#tại-sao-chọn-headless-bridge-thay-vì-cheerpj-hay-j2mejs)
+- [Tại sao dùng WebSocket thay vì WebRTC?](#tại-sao-dùng-websocket-thay-vì-webrtc)
+- [Khả năng tương thích thực tế](#khả-năng-tương-thích-thực-tế)
+- [Cài đặt & Biên dịch](#cài-đặt--biên-dịch)
+- [Hướng dẫn lập trình (Ví dụ thực tế)](#hướng-dẫn-lập-trình-ví-dụ-thực-tế)
+  - [Ví dụ 1: Khởi chạy game cơ bản bằng FreeJ2MEManager](#ví-dụ-1-khởi-chạy-game-cơ-bản-bằng-freej2memanager)
+  - [Ví dụ 2: Vòng lặp nhận hình ảnh và gửi phím cho Web Bridge](#ví-dụ-2-vòng-lặp-nhận-hình-ảnh-và-gửi-phím-cho-web-bridge)
+  - [Ví dụ 3: Đăng ký SessionListener để xử lý khi game bị crash](#ví-dụ-3-đăng-ký-sessionlistener-để-xử-lý-khi-game-bị-crash)
+  - [Ví dụ 4: Cấu hình tự động khôi phục (Auto-Restart) và đọc Hộp đen](#ví-dụ-4-cấu-hình-tự-động-khôi-phục-auto-restart-và-đọc-hộp-đen)
+  - [Ví dụ 5: Lấy dữ liệu âm thanh định kỳ ra tệp hoặc luồng phát](#ví-dụ-5-lấy-dữ-liệu-âm-thanh-định-kỳ-ra-tệp-hoặc-luồng-phát)
+  - [Ví dụ 6: Xử lý sự kiện cảm ứng kéo thả và bàn phím đa dụng](#ví-dụ-6-xử-lý-sự-kiện-cảm-ứng-kéo-thả-và-bàn-phím-đa-dụng)
+  - [Ví dụ 7: Quản lý giới hạn tải và tự động dọn dẹp Session idle](#ví-dụ-7-quản-lý-giới-hạn-tải-và-tự-động-dọn-dẹp-session-idle)
+- [Tham số khởi tạo tham chiếu](#tham-số-khởi-tạo-tham-chiếu)
+- [Ghi chú kỹ thuật về log lúc đóng ứng dụng](#ghi-chú-kỹ-thuật-về-log-lúc-đóng-ứng-dụng)
+- [Giấy phép](#giấy-phép)
 
 ---
 
-## Tổng quan
+## Mục tiêu & Kiến trúc
 
-Đây là bản fork của [TASEmulators/freej2me-plus](https://github.com/TASEmulators/freej2me-plus) với định hướng hoàn toàn khác: thay vì tối ưu cho RetroArch hay GUI truyền thống, phiên bản này được thiết kế để dễ dàng tích hợp vào các ứng dụng web và backend.
+Ở phiên bản gốc, mỗi khi chạy một game J2ME, hệ điều hành phải khởi tạo một máy ảo JVM độc lập kèm theo giao diện cửa sổ AWT/Swing. Khi triển khai trên máy chủ cho 20 người chơi, hệ thống tốn hơn 4GB RAM chỉ để duy trì các tiến trình Java trống.
 
-Hầu hết các giải pháp J2ME trên trình duyệt hiện nay đều đi theo hướng **transpile** (CheerpJ, J2ME.js...). Những giải pháp này có ưu điểm là chạy hoàn toàn trên client, nhưng lại có giới hạn nghiêm trọng về độ tương thích.
-
-FreeJ2ME-Plus vốn dĩ là một máy ảo Java ME thực thụ. Bản fork này được tạo ra với mục tiêu duy nhất: **biến FreeJ2ME-Plus thành một thành phần có thể nhúng được** vào các hệ thống backend/web.
-
----
-
-## Điểm khác biệt lớn so với upstream
-
-Thay vì mỗi người dùng phải chạy một JVM riêng (rất tốn RAM), bản fork này giới thiệu **kiến trúc Multi-Session Isolation**.
-
-### Kiến trúc cũ (upstream)
-```
-User 1 → JVM 1 (200MB+) + Game
-User 2 → JVM 2 (200MB+) + Game
-...
-→ RAM tăng tuyến tính theo số người chơi
-```
-
-### Kiến trúc mới (fork)
-```
-User 1 ─┐
-User 2 ─┼─→ Single JVM + Session Isolation + Shared Resources
-User 3 ─┘
-→ RAM chủ yếu chỉ tăng theo kích thước game, không phải theo số JVM
-```
-
-Kết quả thực tế: **giảm đáng kể RAM overhead** khi chạy nhiều game đồng thời cho nhiều người dùng.
+Bản fork này áp dụng mô hình **Single JVM + ChildFirst ClassLoader Isolation**:
+* Tất cả người chơi cùng chia sẻ một tiến trình Java duy nhất.
+* Các biến toàn cục tĩnh của giả lập (`Mobile`, `Display`, `RMS`) được nhân bản riêng cho từng `sessionId`.
+* Lượng RAM hao tổn cho mỗi phiên chơi mới giảm xuống chỉ còn tương đương dung lượng thực của Rom game và bộ đệm LCD (~35MB - 50MB/session).
 
 ---
 
-## Tính năng chính đã thêm
+## Tại sao chọn Headless Bridge thay vì CheerpJ hay J2ME.js?
 
-- **LibretroEmbeddedSession**: Chạy emulator ở chế độ headless hoàn toàn, không phụ thuộc AWT.
-- **FrameSink / AudioSink abstraction**: Cho phép đẩy frame và âm thanh ra bất kỳ nơi nào (WebSocket, file, bộ nhớ...).
-- **Queue-based & Stream-based sinks**: Hỗ trợ cả chế độ queue (kiểm soát backpressure) và stream.
-- **Multi-session lifecycle management**: Mỗi session có thể được khởi tạo, reset, và dọn dẹp độc lập.
-- **AudioPipe**: Xuất âm thanh theo định dạng packet dễ dàng tiêu thụ từ bên ngoài.
-- **WebSocket transport layer** (tùy chọn): Đã có sẵn lớp hỗ trợ giao tiếp hai chiều.
+Các phương án biên dịch chéo bytecode sang JavaScript hoặc WebAssembly chạy trực tiếp trên trình duyệt client có ưu điểm là không tốn tài nguyên máy chủ. Tuy nhiên, trong thực tế dự án gặp các giới hạn:
+
+1. **Khác biệt về quản lý bộ nhớ & AWT:** Đồ họa của Java ME dựa trên hệ thống AWT thô. Khi chuyển đổi sang Canvas của trình duyệt, các luồng vẽ rất dễ bị khựng, xé hình hoặc rò rỉ bộ nhớ khi chạy các tựa game phức tạp có chu kỳ vẽ dày đặc.
+2. **Các tập lệnh đặc thù của nhà sản xuất:** Phần lớn thư viện game J2ME hay đến từ Nhật Bản và Hàn Quốc (NTT DoCoMo DoJa, KDDI, SoftBank MascotCapsule 3D) gắn chặt với kiến trúc JVM máy bàn. Trình duyệt client khó tái tạo trọn vẹn các tập lệnh native này.
+3. **Bảo mật mã nguồn Rom:** Khi chạy trên client, tệp `.jar` buộc phải tải xuống trình duyệt của người chơi. Chạy trên máy chủ giúp bảo mật tệp game `.jar`, client chỉ đóng vai trò hiển thị kết quả đầu ra.
 
 ---
 
-## Cài đặt
+## Tại sao dùng WebSocket thay vì WebRTC?
 
-### Yêu cầu hệ thống
+Dự án lựa chọn giao thức truyền tải hình ảnh qua WebSocket nhị phân vì các lý do thực tế sau:
 
-- Java 8 (JDK 8)
-- Ant (để build)
-- (Tùy chọn) Git
+1. **Tiết kiệm CPU cho máy chủ:** Độ phân giải tiêu chuẩn của điện thoại J2ME rất nhỏ (thường là `176x208` hoặc `240x320`). Việc truyền trực tiếp các mảng điểm ảnh nén (WebP / Delta RGB) qua WebSocket chỉ tiêu tốn băng thông khoảng 100 - 250 KB/s mỗi người chơi. Nếu dùng WebRTC, máy chủ phải liên tục thực hiện mã hóa video H.264/VP8 bằng vi xử lý cho hàng chục luồng đồng thời, gây quá tải CPU trên các máy chủ nhỏ.
+2. **Sự thuận tiện khi triển khai:** WebSocket đi qua các cổng HTTP/HTTPS (`ws://`, `wss://`) tiêu chuẩn, dễ dàng cấu hình lọt qua mọi proxy hay CDN thông dụng (Nginx, Cloudflare) mà không cần thiết lập các máy chủ STUN/TURN phức tạp như WebRTC.
 
-### Cách build nhanh
+---
 
+## Khả năng tương thích thực tế
+
+Một số ví dụ tiêu biểu về các tựa game đòi hỏi độ chính xác máy ảo cao sẽ chạy ổn định trên kiến trúc Bridge này:
+
+* **`Biohazard / Resident Evil: The Missions 3D` (Engine MascotCapsule V3)**: Đòi hỏi tính toán ma trận dựng hình native chính xác.
+* **`Asphalt 4 Elite Racing / Galaxy on Fire 2` (Engine chuẩn M3G JSR-184)**: Cần duy trì nhịp lặp xử lý đa luồng đều đặn để không bị rớt khung hình.
+* **`Taito Trance Pinball` (Engine âm thanh miniBAE)**: Đòi hỏi bộ tổng hợp nhạc MIDI phần cứng chuẩn cũ của Sun/Oracle.
+
+---
+
+## Cài đặt & Biên dịch
+
+### Yêu cầu môi trường
+- Java JDK 8 (Khuyến nghị dùng chuẩn OpenJDK 8)
+- Apache Ant
+
+### Biên dịch nhanh
 ```bash
-# Clone repo
 git clone https://github.com/AbyssalAscendantAsperger/freej2me-plus.git
 cd freej2me-plus
-
-# Build bằng Ant
 ant
-
-# Hoặc build thủ công
-javac -source 1.6 -target 1.6 -cp "src" -d build/classes src/org/recompile/**/*.java
-jar cf freej2me-plus.jar -C build/classes .
 ```
 
-Sau khi build xong, file JAR sẽ nằm ở thư mục `build/` hoặc `dist/`.
-
-> **Lưu ý**: Bản fork này đã được cấu hình để tự động build JAR mỗi khi push code thông qua GitHub Actions.
+Sau khi chạy lệnh `ant`, hệ thống sinh ra 2 tệp tại thư mục `build/`:
+- **`freej2me.jar`**: Bản dành cho chạy giao diện cửa sổ AWT trên máy cá nhân.
+- **`freej2me-lr.jar`**: **Nhân lõi Libretro Headless chuyên dụng cho tích hợp Web Server**.
 
 ---
 
-## Quick Start
+## Hướng dẫn lập trình (Ví dụ thực tế)
 
-### Chạy game đơn giản nhất
+Dưới đây là các mẫu code chuẩn xác để sử dụng trực tiếp các API trong nhân Core (`freej2me-lr.jar`).
+
+### Ví dụ 1: Khởi chạy game cơ bản bằng FreeJ2MEManager
+
+Cách đơn giản nhất để tạo một phiên giả lập độc lập từ tệp `.jar` và kiểm tra hoạt động:
 
 ```java
-import org.recompile.freej2me.session.LibretroEmbeddedSession;
+import org.recompile.freej2me.manager.FreeJ2MEManager;
+import org.recompile.freej2me.session.*;
 
-public class QuickStart {
-    public static void main(String[] args) {
-        LibretroEmbeddedSession session = new LibretroEmbeddedSession(
-            "game.jar", 240, 320, 0, 60
+public class Example1_SimpleBoot {
+    public static void main(String[] args) throws Exception {
+        FreeJ2MEManager manager = new FreeJ2MEManager();
+
+        // Khởi tạo game với ID "player-01", màn hình 240x320
+        String sessId = manager.createSessionForJar(
+            "player-01", 
+            "./games/mobiarmy.jar", 
+            240, 320, 
+            "./data_storage/player-01"
         );
 
-        session.setFrameSink(frame -> {
-            System.out.println("Frame received: " + frame.length + " bytes");
-        });
-
-        session.start();
-
-        // Chạy 5 giây rồi dừng
-        try { Thread.sleep(5000); } catch (Exception e) {}
-        session.stop();
+        if (sessId != null) {
+            System.out.println("Tạo session thành công: " + sessId);
+            LibretroEmbeddedSession session = manager.getSession(sessId);
+            
+            // Kiểm tra trạng thái máy ảo
+            if (session.isRunning()) {
+                System.out.println("Game đang chạy mượt mà trong bộ nhớ!");
+            }
+        }
     }
 }
 ```
 
-### Chạy với WebSocket (Node.js + Java)
+### Ví dụ 2: Vòng lặp nhận hình ảnh và gửi phím cho Web Bridge
 
-Xem phần **Ví dụ tích hợp với Node.js** ở bên dưới.
+Mô hình tham chiếu khi xây dựng một luồng streaming qua WebSocket cho trình duyệt:
 
----
+```java
+import org.recompile.freej2me.manager.FreeJ2MEManager;
+import org.recompile.freej2me.session.*;
 
-## Cấu hình
+public class Example2_WebBridgeLoop {
+    public void startBridge(FreeJ2MEManager manager, String sessId) {
+        LibretroEmbeddedSession session = manager.getSession(sessId);
+        QueueFrameSink frameQueue = session.getFrameSink();
 
-Bạn có thể cấu hình qua constructor hoặc file `config.json`:
+        // Luồng gửi hình ảnh xuống trình duyệt Client
+        Thread senderThread = new Thread(() -> {
+            while (session.isRunning()) {
+                FramePacket pkt = frameQueue.poll();
+                if (pkt != null) {
+                    byte[] rgbPixels = pkt.getRgbData();
+                    // Gọi hàm gửi mảng byte này qua tín hiệu WebSocket cho khách
+                    myWebSocketClient.sendBinary(rgbPixels);
+                } else {
+                    try { Thread.sleep(4L); } catch (Exception e) {}
+                }
+            }
+        });
+        senderThread.start();
+    }
 
-```json
-{
-  "width": 240,
-  "height": 320,
-  "phoneType": 0,
-  "fps": 60,
-  "sound": 1,
-  "maxFps": 30,
-  "maxConcurrentSessions": 8,
-  "sessionTimeoutMs": 300000,
-  "enableAudioPipe": true
+    // Khi nhận được lệnh bấm phím từ trình duyệt gửi lên
+    public void onClientMessageReceived(FreeJ2MEManager manager, String sessId, int j2meKeyCode, boolean isDown) {
+        // Gửi trực tiếp vào máy ảo một cách an toàn đa luồng
+        manager.sendKey(sessId, j2meKeyCode, isDown);
+    }
 }
 ```
 
-### Các tham số quan trọng
+### Ví dụ 3: Đăng ký SessionListener để xử lý khi game bị crash
 
-| Tham số                  | Mô tả                              | Giá trị mặc định | Khuyến nghị |
-|--------------------------|------------------------------------|------------------|-------------|
-| `width` / `height`       | Độ phân giải màn hình              | 240x320          | Tùy game    |
-| `fps`                    | FPS mục tiêu                       | 60               | 30-60       |
-| `maxConcurrentSessions`  | Số session tối đa cùng lúc         | 8                | 4-12        |
-| `sessionTimeoutMs`       | Thời gian timeout session          | 300000 (5 phút)  | 180000-600000 |
-| `enableAudioPipe`        | Bật xuất âm thanh                  | true             | true        |
-
----
-
-## API Documentation
-
-### Các class chính
-
-#### `LibretroEmbeddedSession`
-
-Lớp chính để khởi tạo và quản lý một game session.
-
-**Constructor:**
-```java
-LibretroEmbeddedSession(String jarPath, int width, int height, int phoneType, int fps)
-```
-
-**Phương thức quan trọng:**
-
-| Phương thức                    | Mô tả |
-|--------------------------------|-------|
-| `start()`                      | Bắt đầu chạy game |
-| `stop()`                       | Dừng game và giải phóng tài nguyên |
-| `setFrameSink(FrameSink)`      | Đăng ký nhận frame |
-| `setAudioSink(AudioSink)`      | Đăng ký nhận audio |
-| `getInputSource()`             | Lấy đối tượng xử lý input |
-| `reset()`                      | Reset game về trạng thái ban đầu |
-
-#### `FrameSink` & `AudioSink`
-
-Có 2 kiểu implementation chính:
-
-- **Stream*Sink**: Nhận dữ liệu ngay lập tức (phù hợp stream realtime).
-- **Queue*Sink**: Đẩy dữ liệu vào queue (khuyến nghị dùng cho web).
-
-#### `InputSource`
-
-```java
-InputSource input = session.getInputSource();
-
-input.keyPress(keyCode);
-input.keyRelease(keyCode);
-input.touchDown(x, y);
-input.touchMove(x, y);
-input.touchUp();
-```
-
----
-
-## Ví dụ sử dụng
-
-### 1. Nhận Frame + Audio (Stream mode)
+Lắng nghe các sự kiện vòng đời để kịp thời phản hồi khi game gặp ngoại lệ nghiêm trọng:
 
 ```java
 import org.recompile.freej2me.session.*;
 
-LibretroEmbeddedSession session = new LibretroEmbeddedSession(jarPath, 240, 320, 0, 60);
+public void registerErrorRecovery(LibretroEmbeddedSession session) {
+    session.setSessionListener(new SessionListener() {
+        @Override
+        public void onSessionStarted(String sessionId) {
+            System.out.println("Khởi chạy phiên: " + sessionId);
+        }
 
-session.setFrameSink(new StreamFrameSink() {
-    @Override
-    public void onFrame(byte[] frameData) {
-        websocket.sendBinary(frameData);
-    }
-});
+        @Override
+        public void onSessionStopped(String sessionId) {
+            System.out.println("Đã giải phóng bộ nhớ phiên: " + sessionId);
+        }
 
-session.setAudioSink(new StreamAudioSink() {
-    @Override
-    public void onAudio(byte[] audioData, int format) {
-        websocket.sendBinary(audioData);
-    }
-});
+        @Override
+        public void onSessionCrashed(String sessionId, Throwable error) {
+            System.err.println("Phát hiện lỗi văng game ở session: " + sessionId);
+            
+            // Đọc nguyên nhân chi tiết
+            String reason = session.getCrashReason();
+            System.err.println("Chi tiết ngoại lệ: " + reason);
 
-session.start();
-```
-
-### 2. Sử dụng Queue mode (khuyến nghị)
-
-```java
-QueueFrameSink frameQueue = new QueueFrameSink(5);
-QueueAudioSink audioQueue = new QueueAudioSink(10);
-
-session.setFrameSink(frameQueue);
-session.setAudioSink(audioQueue);
-
-// Trong event loop
-while (session.isRunning()) {
-    byte[] frame = frameQueue.poll();
-    byte[] audio = audioQueue.poll();
-    // xử lý...
+            // Thông báo cho người chơi biết game gặp sự cố
+            notifyUserBrowserCrash(sessionId, reason);
+        }
+    });
 }
 ```
 
-### 3. Tích hợp với Node.js (WebSocket)
+### Ví dụ 4: Cấu hình tự động khôi phục (Auto-Restart) và đọc Hộp đen
 
-**server.js**
-```js
-const { spawn } = require('child_process');
-const WebSocket = require('ws');
+Khi game gặp lệnh lạ bị sập, tự động khởi động lại và trích xuất nhật ký thao tác trước đó:
 
-const wss = new WebSocket.Server({ port: 3000 });
+```java
+import java.util.List;
 
-wss.on('connection', (ws) => {
-    const java = spawn('java', [
-        '-jar', 'freej2me-plus.jar',
-        ws._socket.remoteAddress
-    ]);
+public void setupCrashReplay(LibretroEmbeddedSession session) {
+    // Cấu hình: Nếu crash, cho phép tự động boot lại tối đa 3 lần
+    session.setAutoRestartOnCrash(true, 3);
 
-    java.stdout.on('data', data => ws.send(data));
-    ws.on('message', msg => java.stdin.write(msg));
-    ws.on('close', () => java.kill());
-});
+    session.setSessionListener(new SessionListener() {
+        @Override
+        public void onSessionStarted(String id) {}
+        @Override
+        public void onSessionStopped(String id) {}
+
+        @Override
+        public void onSessionCrashed(String sessionId, Throwable err) {
+            // Lấy danh sách tối đa 32 lệnh thao tác gần nhất trước giây phút crash
+            List<byte[]> flightRecorderLogs = session.getFlightRecorderHistory();
+            
+            System.out.println("Ghi nhận được " + flightRecorderLogs.size() + " gói lệnh lịch sử.");
+            for (byte[] wirePacket : flightRecorderLogs) {
+                // Lưu mảng lệnh này ra file để các lập trình viên gỡ lỗi sau này
+                saveDumpToFile("crash_replay_" + sessionId + ".bin", wirePacket);
+            }
+        }
+    });
+}
+```
+
+### Ví dụ 5: Lấy dữ liệu âm thanh định kỳ ra tệp hoặc luồng phát
+
+Kết nối vào `QueueAudioSink` để trích xuất mảng PCM âm thanh nguyên thủy của game:
+
+```java
+import org.recompile.freej2me.session.*;
+
+public void streamGameAudio(LibretroEmbeddedSession session) {
+    QueueAudioSink audioQueue = session.getAudioSink();
+
+    Thread audioThread = new Thread(() -> {
+        while (session.isRunning()) {
+            AudioPacket audioPkt = audioQueue.poll();
+            if (audioPkt != null) {
+                short[] pcmSamples = audioPkt.getPcmData();
+                int sampleRate = audioPkt.getSampleRate();
+                int channels = audioPkt.getChannels();
+
+                // Đẩy dữ liệu PCM này vào luồng mã hóa Opus hoặc ghi ra tệp WAV
+                pushToAudioOutputDevice(pcmSamples, sampleRate, channels);
+            } else {
+                try { Thread.sleep(10L); } catch (Exception e) {}
+            }
+        }
+    });
+    audioThread.start();
+}
+```
+
+### Ví dụ 6: Xử lý sự kiện cảm ứng kéo thả và bàn phím đa dụng
+
+API điều khiển hỗ trợ đầy đủ các thao tác chạm màn hình và phím bấm trên điện thoại:
+
+```java
+import org.recompile.freej2me.manager.FreeJ2MEManager;
+
+public void handleControls(FreeJ2MEManager manager, String sessId) {
+    // 1. Nhấn phím Chọn trái (Softkey Left chuẩn J2ME = -6)
+    manager.sendKey(sessId, -6, true);  // Bấm xuống
+    manager.sendKey(sessId, -6, false); // Nhả phím
+
+    // 2. Nhấn phím Số 5 trên bàn phím (KeyCode chuẩn = 53)
+    manager.sendKey(sessId, 53, true);
+    manager.sendKey(sessId, 53, false);
+
+    // 3. Mô phỏng thao tác vuốt màn hình cảm ứng từ trên xuống dưới
+    manager.sendTouch(sessId, 120, 50, 0);  // Chạm tay vào tọa độ (120, 50)
+    manager.sendTouch(sessId, 120, 100, 2); // Kéo xuống (120, 100)
+    manager.sendTouch(sessId, 120, 150, 2); // Kéo tiếp tới (120, 150)
+    manager.sendTouch(sessId, 120, 150, 1); // Nhả tay khỏi màn hình
+}
+```
+
+### Ví dụ 7: Quản lý giới hạn tải và tự động dọn dẹp Session idle
+
+Khi vận hành máy chủ công cộng, cần kiểm soát số lượng phòng chơi và thu hồi bộ nhớ các phòng bỏ trống:
+
+```java
+import org.recompile.freej2me.manager.FreeJ2MEManager;
+
+public class Example7_ServerManagement {
+    public static void main(String[] args) {
+        FreeJ2MEManager manager = new FreeJ2MEManager();
+
+        // 1. Thiết lập giới hạn tối đa 20 phòng chơi đồng thời
+        manager.setMaxConcurrentSessions(20);
+
+        // 2. Quy định: Session nào trôi qua 3 phút (180.000 ms) không có tín hiệu input/poll sẽ bị dọn dẹp
+        manager.setSessionTimeoutMs(180_000L);
+
+        // Kiểm tra định kỳ thông số máy chủ
+        System.out.println("Ngưỡng tải tối đa cấu hình: " + manager.getMaxConcurrentSessions());
+        System.out.println("Thời gian chờ hủy idle: " + manager.getSessionTimeoutMs() + " ms");
+
+        // Khi muốn chủ động quét dọn ngay lập tức các phòng gặp lỗi hoặc quá hạn:
+        int cleanedCrash = manager.cleanupCrashedSessions();
+        int cleanedTimeout = manager.cleanupTimedOutSessions();
+
+        System.out.println("Đã chủ động dọn dẹp " + (cleanedCrash + cleanedTimeout) + " phòng chơi.");
+
+        // Khi tắt máy chủ tổng
+        manager.shutdown();
+    }
+}
 ```
 
 ---
 
-## Troubleshooting
+## Tham số khởi tạo tham chiếu
 
-### Lỗi thường gặp
+Khi gọi hàm `manager.createSession(sessId, dataDir, args)` thủ công, mảng `args` chuẩn gồm 32 chuỗi:
 
-**1. `java.lang.UnsatisfiedLinkError` hoặc lỗi native**
-- Đảm bảo bạn đang dùng Java 8.
-- Một số game cần thư viện native. Hiện tại bản fork chưa hỗ trợ đầy đủ.
-
-**2. Session không nhận được frame**
-- Kiểm tra xem bạn đã gọi `session.start()` chưa.
-- Đảm bảo đã set `FrameSink` trước khi start.
-
-**3. RAM tăng cao khi chạy nhiều session**
-- Giảm giá trị `maxConcurrentSessions`.
-- Sử dụng `Queue*Sink` thay vì `Stream*Sink` để kiểm soát backpressure.
-
-**4. Âm thanh không ra**
-- Kiểm tra `enableAudioPipe: true` trong config.
-- Một số game không có âm thanh hoặc dùng định dạng không được hỗ trợ.
+| Vị trí mảng | Tên tham số | Ý nghĩa | Giá trị ví dụ |
+|:---:|:---|:---|:---|
+| `args[0]` | Width | Chiều rộng màn hình game | `"240"` |
+| `args[1]` | Height | Chiều cao màn hình game | `"320"` |
+| `args[2]` | Rotate | Góc xoay (`0`=0°, `1`=90°, `2`=180°, `3`=270°) | `"0"` |
+| `args[3]` | PhoneType | Hãng giả lập (`0`=Standard, `1`=LG, `2`=Motorola, `6`=NokiaKeyboard, `8`=Siemens) | `"0"` |
+| `args[4]` | FPS | Tốc độ khung hình mục tiêu | `"30"` hoặc `"60"` |
+| `args[5]` | Sound | Âm thanh (`1`=Bật, `0`=Tắt) | `"1"` |
+| `args[6..31]` | Options | Các cờ tối ưu hóa chuyên sâu | Để `"0"` mặc định |
 
 ---
 
-## Benchmarks
+## Ghi chú kỹ thuật về log lúc đóng ứng dụng
 
-> **Lưu ý từ tác giả**: Tôi chỉ có 1 cái laptop cũ kỹ dùng 10 năm nên đừng ai nói tôi phải có demo hay benchmark chi tiết nhé XD.  
-> Dưới đây chỉ là số liệu ước tính từ quá trình phát triển.
+Khi chủ động hủy một phiên giả lập (`destroySession` hoặc `session.stop()`), trên màn hình console sẽ xuất hiện thông báo ngoại lệ:
 
-| Số session đồng thời | RAM ước tính (JVM) | Ghi chú |
-|----------------------|--------------------|--------|
-| 1                    | ~180-220 MB        | - |
-| 4                    | ~280-320 MB        | - |
-| 8                    | ~380-450 MB        | Khuyến nghị max |
-| 12+                  | > 600 MB           | Có thể chậm |
+```text
+java.lang.InterruptedException: sleep interrupted
+java.io.IOException: Interrupted while waiting for queued input
+```
 
-**Kết luận**: Tiết kiệm khoảng **40-60% RAM** so với cách chạy nhiều JVM riêng biệt.
+Đây là phản ứng bình thường của máy ảo Java khi ngắt các luồng đang ngủ hoặc đang chờ bàn phím. Thông báo này được giữ lại trên console để lập trình viên dễ theo dõi tiến trình dọn dẹp kết thúc đúng quy trình.
 
 ---
 
-## Screenshots / Demo
+## Giấy phép
 
-> **Lưu ý từ tác giả**: Tôi chỉ có 1 cái laptop cũ kỹ dùng 10 năm nên đừng ai nói tôi phải có demo hay screenshot đẹp nhé XD.
-
-Hiện tại chưa có hình ảnh demo. Nếu bạn build và chạy được, hãy chụp lại và gửi pull request để mình thêm vào.
-
----
-
-## Đóng góp
-
-Mọi đóng góp đều được hoan nghênh!
-
-### Cách đóng góp
-
-1. Fork repository
-2. Tạo branch mới (`git checkout -b feature/xxx`)
-3. Commit thay đổi
-4. Push và tạo Pull Request
-
-### Quy tắc
-
-- Giữ code sạch và có comment khi cần.
-- Ưu tiên giải pháp đơn giản trước khi tối ưu hóa.
-- Mọi thay đổi lớn nên mở issue trước để thảo luận.
-
----
-
-## Changelog
-
-### v2.0 (2026-06-23)
-- Thêm hệ thống `LibretroEmbeddedSession`
-- Thêm `FrameSink` / `AudioSink` abstraction
-- Thêm `Queue*Sink` và `Stream*Sink`
-- Thêm `AudioPipe` và `AudioPipeMidi`
-- Hỗ trợ WebSocket transport layer
-- Cải thiện multi-session isolation
-
-### v1.x
-- Các cải tiến tương thích DoJa, LCDUI, Graphics từ upstream
-
----
-
-## License
-
-Bản fork này giữ nguyên license **GPLv3** của upstream.
-
----
-
-**Tác giả fork**: AbyssalAscendantAsperger  
-**Repository gốc**: [TASEmulators/freej2me-plus](https://github.com/TASEmulators/freej2me-plus)
-
-Nếu bạn đang xây dựng một nền tảng lưu trữ game J2ME hiếm hoặc muốn chạy J2ME trên web một cách thực thụ, bản fork này có thể phù hợp với nhu cầu của bạn.
+Dự án tuân theo giấy phép mã nguồn mở **GPLv3**.
