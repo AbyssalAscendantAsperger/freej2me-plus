@@ -40,7 +40,8 @@ public class WebSocketMain
 		FreeJ2MEManager manager = new FreeJ2MEManager();
 		WebSocketServer server = new WebSocketServer(port, manager);
 		server.start();
-		System.out.println("FreeJ2ME-Plus WebSocket server listening on port " + port);
+		System.out.println("FreeJ2ME-Plus LeakFix-V3 WebSocket server listening on port " + port);
+		System.out.println("LeakFix-V3 active: stoppable Display event loop, managed Libretro shutdown, EOF-on-input-interrupt, isolated hard-stop fallback");
 		System.out.println("Each WebSocket connection spawns an isolated session.");
 		// Keep main thread alive
 		while(true)

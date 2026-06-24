@@ -222,23 +222,94 @@ public final class LibretroEmbeddedSession
 	{
 		intentionallyStopped = true;
 		running = false;
+		shutdownKnownSessionStatics();
 		if(thread != null)
 		{
 			thread.interrupt();
 		}
 		if(threadGroup != null)
 		{
-			Thread[] threads = new Thread[threadGroup.activeCount() * 2 + 10];
-			int count = threadGroup.enumerate(threads);
-			for(int i = 0; i < count; i++)
+			interruptAndJoinSessionThreads(300L);
+			// Some MIDlets create non-cooperative game loops that catch InterruptedException
+			// and continue forever.  Such live threads pin the child-first classloader and
+			// all session statics.  After graceful shutdown has been requested, hard-stop
+			// only the remaining threads in this isolated session ThreadGroup.
+			if(Boolean.parseBoolean(System.getProperty("freej2me.sessionHardStop", "true")))
 			{
-				threads[i].interrupt();
+				hardStopRemainingSessionThreads();
+				interruptAndJoinSessionThreads(500L);
 			}
 		}
 		cleanupResourcesGracefully();
 		if(frames instanceof QueueFrameSink) { while(((QueueFrameSink)frames).poll() != null); }
 		if(audio instanceof QueueAudioSink) { while(((QueueAudioSink)audio).poll() != null); }
 		if(listener != null) { try { listener.onSessionStopped(sessionId); } catch(Throwable cb) {} }
+	}
+
+	private void interruptAndJoinSessionThreads(long joinMs)
+	{
+		if(threadGroup == null) { return; }
+		Thread[] threads = new Thread[threadGroup.activeCount() * 2 + 20];
+		int count = threadGroup.enumerate(threads, true);
+		for(int i = 0; i < count; i++)
+		{
+			Thread t = threads[i];
+			if(t != null && t != Thread.currentThread()) { t.interrupt(); }
+		}
+		for(int i = 0; i < count; i++)
+		{
+			Thread t = threads[i];
+			if(t == null || t == Thread.currentThread()) { continue; }
+			try { t.join(joinMs); }
+			catch(InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				break;
+			}
+		}
+	}
+
+	@SuppressWarnings("deprecation")
+	private void hardStopRemainingSessionThreads()
+	{
+		if(threadGroup == null) { return; }
+		Thread[] threads = new Thread[threadGroup.activeCount() * 2 + 20];
+		int count = threadGroup.enumerate(threads, true);
+		for(int i = 0; i < count; i++)
+		{
+			Thread t = threads[i];
+			if(t == null || t == Thread.currentThread() || !t.isAlive()) { continue; }
+			try
+			{
+				System.err.println("[" + sessionId + "] Hard-stopping non-cooperative session thread: " + t.getName());
+				t.stop();
+			}
+			catch(Throwable ignored) { }
+		}
+	}
+
+	private void shutdownKnownSessionStatics()
+	{
+		ClassLoader loader = customLoader;
+		if(loader == null) { return; }
+		try
+		{
+			Class<?> libretro = Class.forName("org.recompile.freej2me.Libretro", false, loader);
+			libretro.getMethod("shutdownManagedSession").invoke(null);
+		}
+		catch(Throwable ignored) { }
+		try
+		{
+			Class<?> display = Class.forName("javax.microedition.lcdui.Display", false, loader);
+			display.getMethod("shutdownEventLoop").invoke(null);
+		}
+		catch(Throwable ignored) { }
+		try
+		{
+			Class<?> audioPipe = Class.forName("org.recompile.mobile.AudioPipe", false, loader);
+			audioPipe.getMethod("clearThreadLocalSink").invoke(null);
+		}
+		catch(Throwable ignored) { }
 	}
 
 	private void cleanupResourcesGracefully()

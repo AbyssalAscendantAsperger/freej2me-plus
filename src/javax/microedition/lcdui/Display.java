@@ -47,15 +47,47 @@ public class Display
 
 	private static final AtomicReference<Runnable> setCurrentRequest = new AtomicReference<Runnable>(), paintEvent = new AtomicReference<Runnable>();
 
+	/*
+	 * In managed multi-session mode every MIDlet gets its own child-first
+	 * classloader.  A live Display event thread pins that classloader and all
+	 * session statics, so the event loop must be explicitly stoppable.
+	 */
+	private static volatile boolean eventLoopRunning = false;
+	private static Thread eventThread;
+
 	private Thread flashThread;
 
 	public Display() 
 	{ 
-		new Thread(new Runnable() 
+		startEventThread();
+	}
+
+	private static synchronized void startEventThread()
+	{
+		if(eventThread != null && eventThread.isAlive()) { return; }
+		eventLoopRunning = true;
+		eventThread = new Thread(new Runnable() 
 		{
 			@Override
 			public void run() { processEvents(); }
-		}, "EventProcessing-Thread").start();
+		}, "EventProcessing-Thread");
+		eventThread.setDaemon(true);
+		eventThread.start();
+	}
+
+	public static void shutdownEventLoop()
+	{
+		eventLoopRunning = false;
+		setCurrentRequest.set(null);
+		paintEvent.set(null);
+		synchronized(inputEvents) { inputEvents.clear(); }
+		synchronized(serializedEvents)
+		{
+			serializedEvents.clear();
+			serializedEvents.notifyAll();
+		}
+		Thread t = eventThread;
+		if(t != null) { t.interrupt(); }
 	}
 
 	// MIDlet serial call queue methods
@@ -88,24 +120,28 @@ public class Display
 	 */
 	public void postInputEvent(final Runnable r) 
 	{ 
-		new Thread(new Runnable() 
+		if(!eventLoopRunning || r == null) { return; }
+		Thread t = new Thread(new Runnable() 
 		{
 			@Override
 			public void run() 
 			{
+				if(!eventLoopRunning) { return; }
 				synchronized(inputEvents) { inputEvents.add(r); }
 				synchronized (serializedEvents) 
 				{
 					serializedEvents.notify();
 				}
 			}
-		}).start();
+		}, "Display-InputEvent-Enqueue");
+		t.setDaemon(true);
+		t.start();
 	}
 
-	private void processEvents() 
+	private static void processEvents() 
 	{
 		Runnable call = null;
-		while(true) 
+		while(eventLoopRunning && !Thread.currentThread().isInterrupted()) 
 		{
 			/* 
 			 * MIDP docs don't specify anything exact on when setCurrent should be processed, it just says it is not guaranteed to happen before the "next event delivery"
@@ -116,11 +152,13 @@ public class Display
 
 			synchronized (serializedEvents) 
 			{
-				while(serializedEvents.isEmpty() && inputEvents.isEmpty() && paintEvent.get() == null  && setCurrentRequest.get() == null) // If we have no serial events to process, and no current displayable change, wait.
+				while(eventLoopRunning && serializedEvents.isEmpty() && inputEvents.isEmpty() && paintEvent.get() == null  && setCurrentRequest.get() == null) // If we have no serial events to process, and no current displayable change, wait.
 				{
 					try { serializedEvents.wait(); }
-					catch (Exception e) { }
+					catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
 				}
+
+				if(!eventLoopRunning || Thread.currentThread().isInterrupted()) { return; }
 
 				// Run paint event in sync with the serial queue, always before the serial call's run()
 				call = paintEvent.getAndSet(null);
@@ -134,8 +172,8 @@ public class Display
 					{ 
 						Mobile.log(Mobile.LOG_WARNING, Display.class.getPackage().getName() + "." + Display.class.getSimpleName() + ": " + "Failed to run callSerially event: "+ e.getMessage() + " retrying after a 1000ms delay."); 
 						try { Thread.sleep(1000); }
-						catch(Exception ex) { }
-						call.run();
+						catch(InterruptedException ex) { Thread.currentThread().interrupt(); return; }
+						if(eventLoopRunning && !Thread.currentThread().isInterrupted()) { call.run(); }
 					}
 				}
 			}

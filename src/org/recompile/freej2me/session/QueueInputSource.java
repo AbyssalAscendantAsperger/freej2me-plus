@@ -88,8 +88,9 @@ public final class QueueInputSource implements InputSource
 			catch(InterruptedException e)
 			{
 				Thread.currentThread().interrupt();
-				// Giữ nguyên ngoại lệ ném ra để dễ quan sát tiến trình tắt theo yêu cầu
-				throw new IOException("Interrupted while waiting for queued input", e);
+				closed = true;
+				currentPacket = null;
+				return -1;
 			}
 		}
 		return currentPacket[currentOffset++] & 0xFF;
@@ -128,12 +129,13 @@ public final class QueueInputSource implements InputSource
 						return count == 0 ? -1 : count;
 					}
 				}
-				catch(InterruptedException e)
-				{
-					Thread.currentThread().interrupt();
-					if(count > 0) { return count; }
-					throw new IOException("Interrupted while waiting for queued input", e);
-				}
+					catch(InterruptedException e)
+					{
+						Thread.currentThread().interrupt();
+						closed = true;
+						currentPacket = null;
+						return count == 0 ? -1 : count;
+					}
 			}
 			int toCopy = Math.min(length - count, currentPacket.length - currentOffset);
 			System.arraycopy(currentPacket, currentOffset, buffer, offset + count, toCopy);

@@ -62,6 +62,7 @@ public class Libretro
 
 	LibretroIO lio;
 	private volatile boolean terminating = false;
+	private static volatile Libretro activeManagedInstance;
 
 	private final InputSource input;
 	private final FrameSink frameSink;
@@ -85,6 +86,7 @@ public class Libretro
 
 	public Libretro(String args[], InputSource input, FrameSink frameSink, org.recompile.freej2me.session.AudioSink audioSink)
 	{
+		if(Mobile.isManagedSession) { activeManagedInstance = this; }
 		if(input == null) { throw new NullPointerException("InputSource cannot be null"); }
 		if(frameSink == null) { throw new NullPointerException("FrameSink cannot be null"); }
 		this.input = input;
@@ -239,9 +241,19 @@ public class Libretro
 		if(AudioPipe.enabled()) { AudioPipe.playTone(69, 120, 25); }
 	}
 
+	public static void shutdownManagedSession()
+	{
+		Libretro inst = activeManagedInstance;
+		if(inst != null)
+		{
+			inst.terminateManagedSession("Managed session shutdown", null);
+		}
+		activeManagedInstance = null;
+	}
+
 	private void terminateManagedSession(String reason, Throwable cause)
 	{
-		if(terminating) { return; }
+		if(terminating) { activeManagedInstance = null; return; }
 		terminating = true;
 		Mobile.log(Mobile.LOG_WARNING, Libretro.class.getPackage().getName() + "." + Libretro.class.getSimpleName() + ": " + reason);
 		if(cause != null)
@@ -259,6 +271,7 @@ public class Libretro
 		catch(Exception e) { }
 		try { AudioPipe.clearThreadLocalSink(); }
 		catch(Exception e) { }
+		activeManagedInstance = null;
 	}
 
 	private static void terminateProcessOrThrow(String reason)
