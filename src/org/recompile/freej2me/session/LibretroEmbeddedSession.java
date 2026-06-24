@@ -3,18 +3,27 @@ package org.recompile.freej2me.session;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.recompile.freej2me.Libretro;
 
 /*
 	Embeddable libretro runtime wrapper.
 
-	v0.8 changes:
+	v1.0 MAX ULTIMATE changes:
 	- Fixed instanceof guard in setters so custom InputSource/FrameSink/AudioSink implementations are accepted.
 	- Changed internal field types to interfaces (InputSource, FrameSink, AudioSink).
 	- Added convenience constructor LibretroEmbeddedSession(sessionId, input, frames, audio).
-	- Updated push helpers and stop() cleanup to handle interface types safely.
 	- Added lastActivityTime tracking (touch()) for automatic idle session timeout cleanup.
+	- Bulletproof ThreadGroup Isolation: Intercepts crashes in ANY child thread via uncaughtException().
+	- Flight Recorder Black Box (flightRecorder): Tracks last 32 input packets to replay crash triggers.
+	- Automatic Crash Recovery (autoRestartOnCrash): Configurable respawn up to N times when game crashes.
+	- Added SessionListener support for real-time error callbacks.
+	- Guaranteed graceful resource cleanup (input, frames, audio streams) on crash or stop.
+	- Kept standard thread interrupt stacktraces visible on console per user request.
 */
 public final class LibretroEmbeddedSession
 {
@@ -29,6 +38,22 @@ public final class LibretroEmbeddedSession
 	private ClassLoader customLoader;
 	private java.util.Map<String, String> sessionProperties;
 	private volatile long lastActivityTime = System.currentTimeMillis();
+
+	// Error recovery & Flight recorder state
+	private volatile Throwable lastException = null;
+	private volatile String crashReason = null;
+	private SessionListener listener = null;
+	private volatile boolean intentionallyStopped = false;
+	private String[] savedArgs = null;
+
+	// Auto-Recovery configuration
+	private volatile boolean autoRestartOnCrash = false;
+	private volatile int maxCrashRestarts = 3;
+	private volatile int currentRestartCount = 0;
+
+	// Black box flight recorder (tracks last 32 input packets)
+	private final ConcurrentLinkedQueue<byte[]> flightRecorder = new ConcurrentLinkedQueue<byte[]>();
+	private static final int MAX_FLIGHT_RECORDER_PACKETS = 32;
 
 	public LibretroEmbeddedSession(String sessionId)
 	{
@@ -47,7 +72,24 @@ public final class LibretroEmbeddedSession
 	public InputSource getInputSource() { return input; }
 	public FrameSink getFrameSink() { return frames; }
 	public AudioSink getAudioSink() { return audio; }
-	public boolean isRunning() { return running; }
+	public boolean isRunning() { return running && !intentionallyStopped && lastException == null; }
+
+	public Throwable getLastException() { return lastException; }
+	public String getCrashReason() { return crashReason; }
+	public void setSessionListener(SessionListener listener) { this.listener = listener; }
+
+	public void setAutoRestartOnCrash(boolean autoRestart, int maxRestarts)
+	{
+		this.autoRestartOnCrash = autoRestart;
+		this.maxCrashRestarts = Math.max(1, maxRestarts);
+	}
+	public boolean isAutoRestartOnCrash() { return autoRestartOnCrash; }
+	public int getCurrentRestartCount() { return currentRestartCount; }
+
+	public List<byte[]> getFlightRecorderHistory()
+	{
+		return new ArrayList<byte[]>(flightRecorder);
+	}
 
 	public void touch() { this.lastActivityTime = System.currentTimeMillis(); }
 	public long getLastActivityTime() { return lastActivityTime; }
@@ -79,9 +121,25 @@ public final class LibretroEmbeddedSession
 	{
 		if(running) { return; }
 		running = true;
+		intentionallyStopped = false;
+		lastException = null;
+		crashReason = null;
+		this.savedArgs = args != null ? args.clone() : null;
 		touch();
 		this.customLoader = loader;
-		this.threadGroup = new ThreadGroup("fj2me-session-" + sessionId);
+
+		this.threadGroup = new ThreadGroup("fj2me-session-" + sessionId) {
+			@Override
+			public void uncaughtException(Thread t, Throwable e) {
+				if(!running || intentionallyStopped) {
+					super.uncaughtException(t, e);
+					return;
+				}
+				// Đón đầu toàn bộ ngoại lệ văng ra từ bất kỳ luồng con nào trong game
+				handleSessionCrash(e, "Uncaught exception in child thread '" + t.getName() + "'");
+			}
+		};
+
 		thread = new Thread(threadGroup, new Runnable()
 		{
 			@Override
@@ -89,6 +147,7 @@ public final class LibretroEmbeddedSession
 			{
 				try
 				{
+					if(listener != null) { try { listener.onSessionStarted(sessionId); } catch(Throwable cb) {} }
 					if(dataDir != null)
 					{
 						org.recompile.mobile.Mobile.setDataDir(dataDir);
@@ -122,25 +181,47 @@ public final class LibretroEmbeddedSession
 						new Libretro(args, input, frames, audio);
 					}
 				}
-				catch(Exception e)
+				catch(Throwable e)
 				{
-					e.printStackTrace();
+					handleSessionCrash(e, "Crash in main session thread");
 				}
 				finally
 				{
-					running = false;
+					// Bootstrap thread đã hoàn tất việc nạp game.
+					// Tuyệt đối KHÔNG đóng resource ở đây vì game tiếp tục chạy trên các luồng nền!
 				}
 			}
 		}, "FreeJ2ME-LibretroSession-" + sessionId);
 		thread.start();
 	}
 
+	private synchronized void handleSessionCrash(Throwable e, String context)
+	{
+		if(!running || intentionallyStopped || lastException != null) return;
+		e.printStackTrace(); // Giữ nguyên in ra console theo đúng hành vi chuẩn và yêu cầu user
+		running = false;
+		lastException = e;
+		crashReason = context + ": " + (e.getMessage() != null ? e.getMessage() : e.getClass().getName());
+
+		if(listener != null) { try { listener.onSessionCrashed(sessionId, e); } catch(Throwable cb) {} }
+
+		cleanupResourcesGracefully();
+
+		if(autoRestartOnCrash && currentRestartCount < maxCrashRestarts && !intentionallyStopped)
+		{
+			currentRestartCount++;
+			System.err.println("[" + sessionId + "] CRASH RECOVERY: Auto-restarting session (Attempt " + currentRestartCount + "/" + maxCrashRestarts + ") in 1500ms...");
+			try { Thread.sleep(1500L); } catch(InterruptedException ie) {}
+			lastException = null;
+			crashReason = null;
+			start(savedArgs, customLoader);
+		}
+	}
+
 	public void stop()
 	{
+		intentionallyStopped = true;
 		running = false;
-		if(input != null) { try { input.close(); } catch(IOException e) { } }
-		if(frames != null) { try { frames.close(); } catch(IOException e) { } }
-		if(audio != null) { try { audio.close(); } catch(IOException e) { } }
 		if(thread != null)
 		{
 			thread.interrupt();
@@ -154,24 +235,32 @@ public final class LibretroEmbeddedSession
 				threads[i].interrupt();
 			}
 		}
-		// Drain queues so the session doesn't hold references
-		if(input != null) { try { input.close(); } catch(IOException e) { } }
+		cleanupResourcesGracefully();
 		if(frames instanceof QueueFrameSink) { while(((QueueFrameSink)frames).poll() != null); }
 		if(audio instanceof QueueAudioSink) { while(((QueueAudioSink)audio).poll() != null); }
+		if(listener != null) { try { listener.onSessionStopped(sessionId); } catch(Throwable cb) {} }
+	}
+
+	private void cleanupResourcesGracefully()
+	{
+		if(input != null) { try { input.close(); } catch(IOException e) { } }
+		if(frames != null) { try { frames.close(); } catch(IOException e) { } }
+		if(audio != null) { try { audio.close(); } catch(IOException e) { } }
 	}
 
 	public void sendRaw(byte[] bytes)
 	{
 		touch();
+		recordFlightPacket(bytes);
 		pushInput(bytes);
 	}
 
-	public void sendKeyDown(int keyIndex) { touch(); sendCommandInt(3, keyIndex); }
-	public void sendKeyUp(int keyIndex) { touch(); sendCommandInt(2, keyIndex); }
+	public void sendKeyDown(int keyIndex) { touch(); byte[] b = createCommand(3, keyIndex); recordFlightPacket(b); pushInput(b); }
+	public void sendKeyUp(int keyIndex) { touch(); byte[] b = createCommand(2, keyIndex); recordFlightPacket(b); pushInput(b); }
 
-	public void sendPointerReleased(int x, int y) { touch(); sendPointerCommand(4, x, y); }
-	public void sendPointerPressed(int x, int y) { touch(); sendPointerCommand(5, x, y); }
-	public void sendPointerDragged(int x, int y) { touch(); sendPointerCommand(6, x, y); }
+	public void sendPointerReleased(int x, int y) { touch(); byte[] b = createPointerCommand(4, x, y); recordFlightPacket(b); pushInput(b); }
+	public void sendPointerPressed(int x, int y) { touch(); byte[] b = createPointerCommand(5, x, y); recordFlightPacket(b); pushInput(b); }
+	public void sendPointerDragged(int x, int y) { touch(); byte[] b = createPointerCommand(6, x, y); recordFlightPacket(b); pushInput(b); }
 
 	public void loadJar(String path)
 	{
@@ -179,7 +268,9 @@ public final class LibretroEmbeddedSession
 		byte[] data;
 		try { data = path.getBytes("UTF-8"); }
 		catch(UnsupportedEncodingException e) { data = path.getBytes(); }
-		sendCommandInt(10, data.length);
+		byte[] cmd = createCommand(10, data.length);
+		recordFlightPacket(cmd);
+		pushInput(cmd);
 		pushInput(data);
 	}
 
@@ -189,7 +280,9 @@ public final class LibretroEmbeddedSession
 		byte[] data;
 		try { data = path.getBytes("UTF-8"); }
 		catch(UnsupportedEncodingException e) { data = path.getBytes(); }
-		sendCommandInt(11, data.length);
+		byte[] cmd = createCommand(11, data.length);
+		recordFlightPacket(cmd);
+		pushInput(cmd);
 		pushInput(data);
 	}
 
@@ -210,7 +303,19 @@ public final class LibretroEmbeddedSession
 		pushInput(b);
 	}
 
-	private void sendCommandInt(int command, int value)
+	private void recordFlightPacket(byte[] pkt)
+	{
+		if(pkt != null && pkt.length > 0)
+		{
+			flightRecorder.offer(pkt.clone());
+			while(flightRecorder.size() > MAX_FLIGHT_RECORDER_PACKETS)
+			{
+				flightRecorder.poll();
+			}
+		}
+	}
+
+	private byte[] createCommand(int command, int value)
 	{
 		byte[] b = new byte[5];
 		b[0] = (byte)(command & 0xFF);
@@ -218,10 +323,10 @@ public final class LibretroEmbeddedSession
 		b[2] = (byte)((value >> 16) & 0xFF);
 		b[3] = (byte)((value >> 8) & 0xFF);
 		b[4] = (byte)(value & 0xFF);
-		pushInput(b);
+		return b;
 	}
 
-	private void sendPointerCommand(int command, int x, int y)
+	private byte[] createPointerCommand(int command, int x, int y)
 	{
 		byte[] b = new byte[5];
 		b[0] = (byte)(command & 0xFF);
@@ -229,7 +334,7 @@ public final class LibretroEmbeddedSession
 		b[2] = (byte)(x & 0xFF);
 		b[3] = (byte)((y >> 8) & 0xFF);
 		b[4] = (byte)(y & 0xFF);
-		pushInput(b);
+		return b;
 	}
 
 	private void pushInput(byte[] bytes)

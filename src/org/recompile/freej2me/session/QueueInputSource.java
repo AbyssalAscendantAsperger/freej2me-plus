@@ -43,20 +43,13 @@ public final class QueueInputSource implements InputSource
 			int cmd = pkt[0] & 0xFF;
 			int qSize = queue.size();
 
-			// Rule 1: Drop touch move (cmd=6) if queue starts to back up
 			if(cmd == 6 && qSize >= 32) { return; }
-
-			// Rule 2: Drop frame request (cmd=15) if queue has many items
 			if(cmd == 15 && qSize >= 128) { return; }
-
-			// Rule 3: Drop press events (cmd=3 or cmd=5) if queue is critically flooded
 			if((cmd == 3 || cmd == 5) && qSize >= 1500) { return; }
 		}
 
 		if(!queue.offer(pkt))
 		{
-			// Queue capacity reached.
-			// Guarantee that release events (KeyUp=2, TouchUp=4) and lifecycle commands (>=10) NEVER get lost
 			if(pkt.length > 0)
 			{
 				int cmd = pkt[0] & 0xFF;
@@ -95,6 +88,7 @@ public final class QueueInputSource implements InputSource
 			catch(InterruptedException e)
 			{
 				Thread.currentThread().interrupt();
+				// Giữ nguyên ngoại lệ ném ra để dễ quan sát tiến trình tắt theo yêu cầu
 				throw new IOException("Interrupted while waiting for queued input", e);
 			}
 		}
@@ -137,6 +131,7 @@ public final class QueueInputSource implements InputSource
 				catch(InterruptedException e)
 				{
 					Thread.currentThread().interrupt();
+					if(count > 0) { return count; }
 					throw new IOException("Interrupted while waiting for queued input", e);
 				}
 			}

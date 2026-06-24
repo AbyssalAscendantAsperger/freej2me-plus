@@ -4,6 +4,7 @@ import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,10 +20,13 @@ import org.recompile.freej2me.session.*;
 	(FramePacket / AudioPacket) so that no object type crosses classloader
 	boundaries in a problematic way.
 
-	v0.8 features:
+	v1.0 MAX features:
 	- Max concurrent sessions limit (maxConcurrentSessions).
 	- Automatic idle session timeout cleanup daemon (sessionTimeoutMs).
 	- High-level helper createSessionForJar(...) to launch JAR games easily.
+	- Comprehensive Error Recovery inspection & auto cleanup of crashed sessions.
+	- Flight Recorder inspection (getSessionFlightRecorder).
+	- Auto Recovery configuration (setAutoRestartOnCrash).
 */
 public class FreeJ2MEManager
 {
@@ -48,6 +52,36 @@ public class FreeJ2MEManager
 	public void setSessionTimeoutMs(long timeoutMs) { this.sessionTimeoutMs = timeoutMs; }
 	public long getSessionTimeoutMs() { return sessionTimeoutMs; }
 
+	public Throwable getSessionError(String sessionId)
+	{
+		LibretroEmbeddedSession s = sessions.get(sessionId);
+		return s != null ? s.getLastException() : null;
+	}
+
+	public String getSessionCrashReason(String sessionId)
+	{
+		LibretroEmbeddedSession s = sessions.get(sessionId);
+		return s != null ? s.getCrashReason() : null;
+	}
+
+	public void setSessionListener(String sessionId, SessionListener listener)
+	{
+		LibretroEmbeddedSession s = sessions.get(sessionId);
+		if(s != null) { s.setSessionListener(listener); }
+	}
+
+	public void setAutoRestartOnCrash(String sessionId, boolean autoRestart, int maxRestarts)
+	{
+		LibretroEmbeddedSession s = sessions.get(sessionId);
+		if(s != null) { s.setAutoRestartOnCrash(autoRestart, maxRestarts); }
+	}
+
+	public List<byte[]> getSessionFlightRecorder(String sessionId)
+	{
+		LibretroEmbeddedSession s = sessions.get(sessionId);
+		return s != null ? s.getFlightRecorderHistory() : null;
+	}
+
 	private void startTimeoutCleanupDaemon()
 	{
 		Thread t = new Thread(() -> {
@@ -56,6 +90,7 @@ public class FreeJ2MEManager
 				try
 				{
 					Thread.sleep(15_000L); // Kiểm tra định kỳ mỗi 15 giây
+					cleanupCrashedSessions();
 					cleanupTimedOutSessions();
 				}
 				catch(InterruptedException e)
@@ -67,9 +102,25 @@ public class FreeJ2MEManager
 					// Ignore
 				}
 			}
-		}, "FreeJ2MEManager-IdleCleanupDaemon");
+		}, "FreeJ2MEManager-LifecycleCleanupDaemon");
 		t.setDaemon(true);
 		t.start();
+	}
+
+	public int cleanupCrashedSessions()
+	{
+		int cleaned = 0;
+		for(Map.Entry<String, LibretroEmbeddedSession> entry : sessions.entrySet())
+		{
+			LibretroEmbeddedSession s = entry.getValue();
+			if(!s.isRunning() && s.getLastException() != null)
+			{
+				System.out.println("FreeJ2MEManager: Tự động dọn dẹp session đã crash '" + entry.getKey() + "' (Lỗi: " + s.getCrashReason() + ")");
+				destroySession(entry.getKey());
+				cleaned++;
+			}
+		}
+		return cleaned;
 	}
 
 	public int cleanupTimedOutSessions()
@@ -113,15 +164,14 @@ public class FreeJ2MEManager
 		else if("SKT".equalsIgnoreCase(phoneType)) phoneInt = 10;
 		else if("KDDI".equalsIgnoreCase(phoneType)) phoneInt = 11;
 
-		String[] args = new String[]{
-			String.valueOf(width),
-			String.valueOf(height),
-			String.valueOf(rotate / 90),
-			String.valueOf(phoneInt),
-			String.valueOf(fps),
-			sound ? "1" : "0",
-			"0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"
-		};
+		String[] args = new String[32];
+		args[0] = String.valueOf(width);
+		args[1] = String.valueOf(height);
+		args[2] = String.valueOf(rotate / 90);
+		args[3] = String.valueOf(phoneInt);
+		args[4] = String.valueOf(fps);
+		args[5] = sound ? "1" : "0";
+		for(int i = 6; i < 32; i++) { args[i] = "0"; }
 
 		String id = createSession(sessionId, dataDir, args, props);
 		if(id != null)
@@ -147,7 +197,8 @@ public class FreeJ2MEManager
 
 	public String createSession(String sessionId, String dataDir, String[] args, Map<String, String> sessionProperties)
 	{
-		cleanupTimedOutSessions(); // Trước khi tạo mới, dọn dẹp các session đã hết hạn
+		cleanupCrashedSessions();
+		cleanupTimedOutSessions();
 		if(sessions.size() >= maxConcurrentSessions)
 		{
 			System.err.println("FreeJ2MEManager: Từ chối tạo session '" + sessionId + "' do vượt ngưỡng tối đa (" + maxConcurrentSessions + ")");
