@@ -5,7 +5,12 @@ on:
     branches: [ devel, main ]
     tags:
       - 'v*.*.*'
+      - 'v*.*'
   workflow_dispatch:
+
+permissions:
+  contents: write          # ← QUAN TRỌNG: Cho phép tạo Release
+  actions: read
 
 jobs:
   build:
@@ -31,6 +36,7 @@ jobs:
         run: |
           mkdir -p artifacts
           find . -name "*.jar" -not -path "./.git/*" -exec cp {} artifacts/ \; 2>/dev/null || true
+          echo "=== Artifacts ==="
           ls -la artifacts/
 
       - name: Upload Artifact
@@ -40,8 +46,8 @@ jobs:
           path: artifacts/
           retention-days: 30
 
-      # Tự động tạo Release khi push tag
-      - name: Create GitHub Release
+
+      - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
@@ -49,5 +55,4 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
