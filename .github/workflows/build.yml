@@ -1,10 +1,10 @@
-name: Build FreeJ2ME-Plus JAR
+name: Build & Release FreeJ2ME-Plus
 
 on:
   push:
-    branches: [ devel, main, master ]
-  pull_request:
-    branches: [ devel, main, master ]
+    branches: [ devel, main ]
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 8
@@ -21,44 +21,33 @@ jobs:
           java-version: '8'
           distribution: 'temurin'
 
-      - name: Setup Ant
-        uses: arduino/setup-task@v2
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Ant (fallback)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ant
+      - name: Install Ant
+        run: sudo apt-get update && sudo apt-get install -y ant
 
       - name: Build with Ant
-        run: |
-          ant -f build.xml
+        run: ant -f build.xml
 
-      - name: Create artifacts directory
-        run: mkdir -p artifacts
-
-      - name: Find and copy built JARs
+      - name: Prepare artifacts
         run: |
-          find . -name "*.jar" -not -path "./.git/*" | head -10
-          cp -v build/*.jar artifacts/ 2>/dev/null || true
-          cp -v dist/*.jar artifacts/ 2>/dev/null || true
-          cp -v *.jar artifacts/ 2>/dev/null || true
+          mkdir -p artifacts
+          find . -name "*.jar" -not -path "./.git/*" -exec cp {} artifacts/ \; 2>/dev/null || true
           ls -la artifacts/
 
-      - name: Upload build artifacts
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: freej2me-plus-jar
+          name: freej2me-plus
           path: artifacts/
           retention-days: 30
 
-      - name: Create Release (only on tag)
+      # Tự động tạo Release khi push tag
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*.jar
           draft: false
           prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
