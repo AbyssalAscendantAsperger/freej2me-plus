@@ -2,17 +2,38 @@
 
 > **Một bản fork tập trung vào việc biến FreeJ2ME-Plus thành một nền tảng headless có khả năng chạy đa người dùng.**
 
-Đây là bản fork của [TASEmulators/freej2me-plus](https://github.com/TASEmulators/freej2me-plus) với định hướng hoàn toàn khác: thay vì tối ưu cho RetroArch hay GUI truyền thống, phiên bản này được thiết kế để dễ dàng tích hợp vào các ứng dụng web và backend.
+[![Build Status](https://github.com/AbyssalAscendantAsperger/freej2me-plus/actions/workflows/build.yml/badge.svg)](https://github.com/AbyssalAscendantAsperger/freej2me-plus/actions/workflows/build.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Java](https://img.shields.io/badge/Java-8-orange)](https://openjdk.java.net/)
 
 ---
 
-## Tại sao cần bản fork này?
+## Mục lục
 
-Hầu hết các giải pháp J2ME trên trình duyệt hiện nay đều đi theo hướng **transpile** (CheerpJ, J2ME.js, v.v.). Những giải pháp này có ưu điểm là chạy hoàn toàn trên client, nhưng lại có giới hạn nghiêm trọng về độ tương thích.
+- [Tổng quan](#tổng-quan)
+- [Điểm khác biệt](#điểm-khác-biệt-lớn-so-với-upstream)
+- [Tính năng chính](#tính-năng-chính-đã-thêm)
+- [Cài đặt](#cài-đặt)
+- [Quick Start](#quick-start)
+- [Cấu hình](#cấu-hình)
+- [API Documentation](#api-documentation)
+- [Ví dụ sử dụng](#ví-dụ-sử-dụng)
+- [Troubleshooting](#troubleshooting)
+- [Benchmarks](#benchmarks)
+- [Screenshots / Demo](#screenshots--demo)
+- [Đóng góp](#đóng-góp)
+- [Changelog](#changelog)
+- [License](#license)
 
-FreeJ2ME-Plus vốn dĩ là một máy ảo Java ME thực thụ, có khả năng chạy được rất nhiều game phức tạp mà các giải pháp browser-based không thể làm được. Tuy nhiên, bản gốc được thiết kế chủ yếu để chạy như một ứng dụng desktop hoặc core RetroArch.
+---
 
-Bản fork này được tạo ra với mục tiêu duy nhất: **biến FreeJ2ME-Plus thành một thành phần có thể nhúng được** vào các hệ thống backend/web.
+## Tổng quan
+
+Đây là bản fork của [TASEmulators/freej2me-plus](https://github.com/TASEmulators/freej2me-plus) với định hướng hoàn toàn khác: thay vì tối ưu cho RetroArch hay GUI truyền thống, phiên bản này được thiết kế để dễ dàng tích hợp vào các ứng dụng web và backend.
+
+Hầu hết các giải pháp J2ME trên trình duyệt hiện nay đều đi theo hướng **transpile** (CheerpJ, J2ME.js...). Những giải pháp này có ưu điểm là chạy hoàn toàn trên client, nhưng lại có giới hạn nghiêm trọng về độ tương thích.
+
+FreeJ2ME-Plus vốn dĩ là một máy ảo Java ME thực thụ. Bản fork này được tạo ra với mục tiêu duy nhất: **biến FreeJ2ME-Plus thành một thành phần có thể nhúng được** vào các hệ thống backend/web.
 
 ---
 
@@ -51,75 +72,161 @@ Kết quả thực tế: **giảm đáng kể RAM overhead** khi chạy nhiều 
 
 ---
 
-## Use case phù hợp
+## Cài đặt
 
-Bản fork này đặc biệt phù hợp với những ai muốn:
+### Yêu cầu hệ thống
 
-- Xây dựng **thư viện game J2ME** trên web (đặc biệt là các game hiếm, vendor-specific).
-- Tạo nền tảng **cloud gaming** nhẹ cho J2ME.
-- Chạy hàng trăm game đồng thời trên một server mà không tốn quá nhiều RAM.
-- Tích hợp J2ME vào các hệ thống backend hiện có (Node.js, Go, Python...).
+- Java 8 (JDK 8)
+- Ant (để build)
+- (Tùy chọn) Git
 
-**Lưu ý quan trọng**: Đây không phải là giải pháp "chạy cho hàng nghìn người dùng cùng lúc". Nó phù hợp với mô hình có **hàng đợi** và **giới hạn concurrent session** hợp lý.
+### Cách build nhanh
+
+```bash
+# Clone repo
+git clone https://github.com/AbyssalAscendantAsperger/freej2me-plus.git
+cd freej2me-plus
+
+# Build bằng Ant
+ant
+
+# Hoặc build thủ công
+javac -source 1.6 -target 1.6 -cp "src" -d build/classes src/org/recompile/**/*.java
+jar cf freej2me-plus.jar -C build/classes .
+```
+
+Sau khi build xong, file JAR sẽ nằm ở thư mục `build/` hoặc `dist/`.
+
+> **Lưu ý**: Bản fork này đã được cấu hình để tự động build JAR mỗi khi push code thông qua GitHub Actions.
 
 ---
 
-## Cách sử dụng
+## Quick Start
 
-### 1. Chạy game ở chế độ Headless (cơ bản)
+### Chạy game đơn giản nhất
 
 ```java
 import org.recompile.freej2me.session.LibretroEmbeddedSession;
-import org.recompile.mobile.Mobile;
 
-public class BasicHeadlessExample {
+public class QuickStart {
     public static void main(String[] args) {
-        // Khởi tạo session
         LibretroEmbeddedSession session = new LibretroEmbeddedSession(
-            "/path/to/game.jar",
-            240, 320,           // resolution
-            0,                  // phone type
-            60                  // fps
+            "game.jar", 240, 320, 0, 60
         );
 
-        // Đăng ký nhận frame
         session.setFrameSink(frame -> {
-            // frame là byte[] hoặc BufferedImage tùy implementation
-            System.out.println("Received frame: " + frame.length + " bytes");
+            System.out.println("Frame received: " + frame.length + " bytes");
         });
 
-        // Chạy game
         session.start();
 
-        // Sau 10 giây thì dừng
-        try { Thread.sleep(10000); } catch (Exception ignored) {}
+        // Chạy 5 giây rồi dừng
+        try { Thread.sleep(5000); } catch (Exception e) {}
         session.stop();
     }
 }
 ```
 
-### 2. Nhận cả Frame + Audio (Stream mode)
+### Chạy với WebSocket (Node.js + Java)
+
+Xem phần **Ví dụ tích hợp với Node.js** ở bên dưới.
+
+---
+
+## Cấu hình
+
+Bạn có thể cấu hình qua constructor hoặc file `config.json`:
+
+```json
+{
+  "width": 240,
+  "height": 320,
+  "phoneType": 0,
+  "fps": 60,
+  "sound": 1,
+  "maxFps": 30,
+  "maxConcurrentSessions": 8,
+  "sessionTimeoutMs": 300000,
+  "enableAudioPipe": true
+}
+```
+
+### Các tham số quan trọng
+
+| Tham số                  | Mô tả                              | Giá trị mặc định | Khuyến nghị |
+|--------------------------|------------------------------------|------------------|-------------|
+| `width` / `height`       | Độ phân giải màn hình              | 240x320          | Tùy game    |
+| `fps`                    | FPS mục tiêu                       | 60               | 30-60       |
+| `maxConcurrentSessions`  | Số session tối đa cùng lúc         | 8                | 4-12        |
+| `sessionTimeoutMs`       | Thời gian timeout session          | 300000 (5 phút)  | 180000-600000 |
+| `enableAudioPipe`        | Bật xuất âm thanh                  | true             | true        |
+
+---
+
+## API Documentation
+
+### Các class chính
+
+#### `LibretroEmbeddedSession`
+
+Lớp chính để khởi tạo và quản lý một game session.
+
+**Constructor:**
+```java
+LibretroEmbeddedSession(String jarPath, int width, int height, int phoneType, int fps)
+```
+
+**Phương thức quan trọng:**
+
+| Phương thức                    | Mô tả |
+|--------------------------------|-------|
+| `start()`                      | Bắt đầu chạy game |
+| `stop()`                       | Dừng game và giải phóng tài nguyên |
+| `setFrameSink(FrameSink)`      | Đăng ký nhận frame |
+| `setAudioSink(AudioSink)`      | Đăng ký nhận audio |
+| `getInputSource()`             | Lấy đối tượng xử lý input |
+| `reset()`                      | Reset game về trạng thái ban đầu |
+
+#### `FrameSink` & `AudioSink`
+
+Có 2 kiểu implementation chính:
+
+- **Stream*Sink**: Nhận dữ liệu ngay lập tức (phù hợp stream realtime).
+- **Queue*Sink**: Đẩy dữ liệu vào queue (khuyến nghị dùng cho web).
+
+#### `InputSource`
+
+```java
+InputSource input = session.getInputSource();
+
+input.keyPress(keyCode);
+input.keyRelease(keyCode);
+input.touchDown(x, y);
+input.touchMove(x, y);
+input.touchUp();
+```
+
+---
+
+## Ví dụ sử dụng
+
+### 1. Nhận Frame + Audio (Stream mode)
 
 ```java
 import org.recompile.freej2me.session.*;
-import org.recompile.mobile.AudioPipe;
 
 LibretroEmbeddedSession session = new LibretroEmbeddedSession(jarPath, 240, 320, 0, 60);
 
-// Nhận frame
 session.setFrameSink(new StreamFrameSink() {
     @Override
     public void onFrame(byte[] frameData) {
-        // Gửi frame sang WebSocket hoặc xử lý tiếp
         websocket.sendBinary(frameData);
     }
 });
 
-// Nhận audio
 session.setAudioSink(new StreamAudioSink() {
     @Override
     public void onAudio(byte[] audioData, int format) {
-        // audioData theo định dạng AudioPipe
         websocket.sendBinary(audioData);
     }
 });
@@ -127,151 +234,133 @@ session.setAudioSink(new StreamAudioSink() {
 session.start();
 ```
 
-### 3. Sử dụng Queue mode (khuyến nghị cho web)
+### 2. Sử dụng Queue mode (khuyến nghị)
 
 ```java
-import org.recompile.freej2me.session.QueueFrameSink;
-import org.recompile.freej2me.session.QueueAudioSink;
-
-QueueFrameSink frameQueue = new QueueFrameSink(5);   // giữ tối đa 5 frame
-QueueAudioSink audioQueue = new QueueAudioSink(10);  // giữ tối đa 10 packet audio
+QueueFrameSink frameQueue = new QueueFrameSink(5);
+QueueAudioSink audioQueue = new QueueAudioSink(10);
 
 session.setFrameSink(frameQueue);
 session.setAudioSink(audioQueue);
 
-// Trong thread riêng hoặc event loop
+// Trong event loop
 while (session.isRunning()) {
-    byte[] frame = frameQueue.poll();   // non-blocking hoặc dùng take()
+    byte[] frame = frameQueue.poll();
     byte[] audio = audioQueue.poll();
-
-    if (frame != null) {
-        // Xử lý frame
-    }
-    if (audio != null) {
-        // Xử lý audio
-    }
+    // xử lý...
 }
 ```
 
-### 4. Xử lý Input từ Web
+### 3. Tích hợp với Node.js (WebSocket)
 
-```java
-import org.recompile.freej2me.session.InputSource;
-
-InputSource input = session.getInputSource();
-
-// Gửi phím
-input.keyPress(0x35);        // phím 5 (Fire)
-input.keyRelease(0x35);
-
-// Gửi touch (nếu game hỗ trợ)
-input.touchDown(120, 200);
-input.touchMove(125, 205);
-input.touchUp();
-```
-
-### 5. Ví dụ tích hợp với Node.js (WebSocket)
-
-**Server.js (Node.js)**
-
+**server.js**
 ```js
-const WebSocket = require('ws');
 const { spawn } = require('child_process');
+const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ port: 3000 });
 
 wss.on('connection', (ws) => {
-    // Khởi động Java process với session
     const java = spawn('java', [
-        '-cp', 'freej2me-plus.jar:lib/*',
-        'org.recompile.freej2me.WebSocketMain',
+        '-jar', 'freej2me-plus.jar',
         ws._socket.remoteAddress
     ]);
 
-    java.stdout.on('data', (data) => {
-        // Nhận frame/audio từ Java
-        ws.send(data);
-    });
-
-    ws.on('message', (msg) => {
-        // Gửi input từ client về Java
-        java.stdin.write(msg);
-    });
-
-    ws.on('close', () => {
-        java.kill();
-    });
+    java.stdout.on('data', data => ws.send(data));
+    ws.on('message', msg => java.stdin.write(msg));
+    ws.on('close', () => java.kill());
 });
 ```
 
-**Java side** (WebSocketMain.java - đã có trong fork):
+---
 
-```java
-// org.recompile.freej2me.transport.WebSocketMain
-public class WebSocketMain {
-    public static void main(String[] args) {
-        String clientId = args[0];
-        LibretroEmbeddedSession session = new LibretroEmbeddedSession(...);
-        
-        WebSocketSession wsSession = new WebSocketSession(clientId);
-        session.setFrameSink(wsSession::sendFrame);
-        session.setAudioSink(wsSession::sendAudio);
-        
-        // Lắng nghe input từ WebSocket
-        wsSession.setInputListener(session.getInputSource());
-        
-        session.start();
-    }
-}
-```
+## Troubleshooting
+
+### Lỗi thường gặp
+
+**1. `java.lang.UnsatisfiedLinkError` hoặc lỗi native**
+- Đảm bảo bạn đang dùng Java 8.
+- Một số game cần thư viện native. Hiện tại bản fork chưa hỗ trợ đầy đủ.
+
+**2. Session không nhận được frame**
+- Kiểm tra xem bạn đã gọi `session.start()` chưa.
+- Đảm bảo đã set `FrameSink` trước khi start.
+
+**3. RAM tăng cao khi chạy nhiều session**
+- Giảm giá trị `maxConcurrentSessions`.
+- Sử dụng `Queue*Sink` thay vì `Stream*Sink` để kiểm soát backpressure.
+
+**4. Âm thanh không ra**
+- Kiểm tra `enableAudioPipe: true` trong config.
+- Một số game không có âm thanh hoặc dùng định dạng không được hỗ trợ.
 
 ---
 
-## Cấu hình mẫu (config.json)
+## Benchmarks
 
-```json
-{
-  "comment": "Cấu hình cho web bridge",
-  "javaPath": "../jdk8u492-b09-jre/bin/java.exe",
-  "freej2meJar": "../freej2me-plus",
-  "defaultGameJar": null,
-  "width": 240,
-  "height": 320,
-  "phoneType": 0,
-  "rotate": 0,
-  "fps": 60,
-  "sound": 1,
-  "maxFps": 30,
-  "port": 3000,
-  "maxConcurrentSessions": 8,
-  "sessionTimeoutMs": 300000,
-  "enableAudioPipe": true
-}
-```
+> **Lưu ý từ tác giả**: Tôi chỉ có 1 cái laptop cũ kỹ dùng 10 năm nên đừng ai nói tôi phải có demo hay benchmark chi tiết nhé XD.  
+> Dưới đây chỉ là số liệu ước tính từ quá trình phát triển.
+
+| Số session đồng thời | RAM ước tính (JVM) | Ghi chú |
+|----------------------|--------------------|--------|
+| 1                    | ~180-220 MB        | - |
+| 4                    | ~280-320 MB        | - |
+| 8                    | ~380-450 MB        | Khuyến nghị max |
+| 12+                  | > 600 MB           | Có thể chậm |
+
+**Kết luận**: Tiết kiệm khoảng **40-60% RAM** so với cách chạy nhiều JVM riêng biệt.
 
 ---
 
-## Quản lý tài nguyên & Chống rò rỉ
+## Screenshots / Demo
 
-Bản fork đã được thiết kế với một số cơ chế bảo vệ:
+> **Lưu ý từ tác giả**: Tôi chỉ có 1 cái laptop cũ kỹ dùng 10 năm nên đừng ai nói tôi phải có demo hay screenshot đẹp nhé XD.
 
-- Mỗi session có vòng đời rõ ràng (`start()` → `stop()` → `cleanup()`).
-- Tự động dọn dẹp khi session bị timeout.
-- Hỗ trợ `Queue*Sink` để tránh tràn bộ nhớ khi client chậm.
-- Khuyến nghị **luôn gọi `session.stop()`** khi người dùng ngắt kết nối.
+Hiện tại chưa có hình ảnh demo. Nếu bạn build và chạy được, hãy chụp lại và gửi pull request để mình thêm vào.
 
 ---
 
-## Lời kết
+## Đóng góp
 
-Bản fork này được tạo ra vì tôi tin rằng FreeJ2ME-Plus là một trong những core J2ME mạnh nhất hiện nay, nhưng nó xứng đáng được sử dụng theo cách linh hoạt hơn — đặc biệt là trong môi trường web và backend.
+Mọi đóng góp đều được hoan nghênh!
 
-Tôi hy vọng trong tương lai upstream có thể hỗ trợ hướng phát triển này. Trong lúc chờ đợi, tôi sẽ tiếp tục duy trì bản fork này để phục vụ những ai cần một giải pháp J2ME thực thụ trên web.
+### Cách đóng góp
 
-Nếu bạn đang xây dựng một nền tảng lưu trữ hoặc phát hành game J2ME hiếm, bản fork này có thể là một lựa chọn đáng cân nhắc.
+1. Fork repository
+2. Tạo branch mới (`git checkout -b feature/xxx`)
+3. Commit thay đổi
+4. Push và tạo Pull Request
+
+### Quy tắc
+
+- Giữ code sạch và có comment khi cần.
+- Ưu tiên giải pháp đơn giản trước khi tối ưu hóa.
+- Mọi thay đổi lớn nên mở issue trước để thảo luận.
 
 ---
 
-**License**: Giữ nguyên license của upstream (GPLv3)
+## Changelog
 
-**Liên hệ / Đóng góp**: Mở issue trên repo này.
+### v2.0 (2026-06-23)
+- Thêm hệ thống `LibretroEmbeddedSession`
+- Thêm `FrameSink` / `AudioSink` abstraction
+- Thêm `Queue*Sink` và `Stream*Sink`
+- Thêm `AudioPipe` và `AudioPipeMidi`
+- Hỗ trợ WebSocket transport layer
+- Cải thiện multi-session isolation
+
+### v1.x
+- Các cải tiến tương thích DoJa, LCDUI, Graphics từ upstream
+
+---
+
+## License
+
+Bản fork này giữ nguyên license **GPLv3** của upstream.
+
+---
+
+**Tác giả fork**: AbyssalAscendantAsperger  
+**Repository gốc**: [TASEmulators/freej2me-plus](https://github.com/TASEmulators/freej2me-plus)
+
+Nếu bạn đang xây dựng một nền tảng lưu trữ game J2ME hiếm hoặc muốn chạy J2ME trên web một cách thực thụ, bản fork này có thể phù hợp với nhu cầu của bạn.
