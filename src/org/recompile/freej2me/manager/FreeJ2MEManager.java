@@ -34,7 +34,7 @@ public class FreeJ2MEManager
 	private final ClassLoader parentLoader;
 	private final URL coreJarUrl;
 
-	private volatile int maxConcurrentSessions = 16;
+	private volatile int maxConcurrentSessions = 1000s;
 	private volatile long sessionTimeoutMs = 300_000L; // 5 phút
 	private volatile boolean daemonRunning = true;
 
